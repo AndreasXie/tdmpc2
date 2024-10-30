@@ -1,3 +1,4 @@
+
 from copy import deepcopy
 import warnings
 
@@ -9,7 +10,10 @@ from envs.wrappers.tensor import TensorWrapper
 
 def missing_dependencies(task):
 	raise ValueError(f'Missing dependencies for task {task}; install dependencies to use this environment.')
-
+try:
+	from envs.atari import make_atari as make_atari_env
+except:
+	make_atari_env = missing_dependencies
 try:
 	from envs.dmcontrol import make_env as make_dm_control_env
 except:
@@ -62,7 +66,7 @@ def make_env(cfg):
 
 	else:
 		env = None
-		for fn in [make_dm_control_env, make_maniskill_env, make_metaworld_env, make_myosuite_env]:
+		for fn in [make_dm_control_env, make_maniskill_env, make_metaworld_env, make_myosuite_env, make_atari_env]:
 			try:
 				env = fn(cfg)
 			except ValueError:
@@ -70,13 +74,22 @@ def make_env(cfg):
 		if env is None:
 			raise ValueError(f'Failed to make environment "{cfg.task}": please verify that dependencies are installed and that the task exists.')
 		env = TensorWrapper(env)
-	if cfg.get('obs', 'state') == 'rgb':
+	if cfg.get('obs', 'state') == 'rgb' and cfg.task_platform != 'atari':
 		env = PixelWrapper(cfg, env)
 	try: # Dict
 		cfg.obs_shape = {k: v.shape for k, v in env.observation_space.spaces.items()}
 	except: # Box
 		cfg.obs_shape = {cfg.get('obs', 'state'): env.observation_space.shape}
-	cfg.action_dim = env.action_space.shape[0]
-	cfg.episode_length = env.max_episode_steps
+	try:
+		cfg.action_dim = env.action_space.shape[0]
+	except:
+		cfg.action_dim = 1
+		cfg.action_range = env.action_space.n #for atari discrete action space, naively output action index
+
+
+	# cfg.action_range = (0, env.action_space.n-1) if cfg.task_platform == 'atari' else None
+	cfg.episode_length = env.max_episode_steps if hasattr(env, 'max_episode_steps') else cfg.max_episode_steps
 	cfg.seed_steps = max(1000, 5*cfg.episode_length)
+	# cfg.seed_steps = 200
 	return env
+

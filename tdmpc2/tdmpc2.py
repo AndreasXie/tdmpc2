@@ -38,6 +38,8 @@ class TDMPC2(torch.nn.Module):
 		if cfg.compile:
 			print('compiling - update')
 			self._update = torch.compile(self._update, mode="reduce-overhead")
+		self.action_mode = 'continuous' if cfg.get('task_platform') != 'atari' else 'discrete'
+		self.action_range = cfg.action_range
 
 	@property
 	def plan(self):
@@ -107,6 +109,10 @@ class TDMPC2(torch.nn.Module):
 		else:
 			z = self.model.encode(obs, task)
 			a = self.model.pi(z, task)[int(not eval_mode)][0]
+		if self.action_mode == 'discrete':
+			# a = (a*self.action_range)
+			a = a
+			# a = a.argmax()
 		return a.cpu()
 
 	@torch.no_grad()
