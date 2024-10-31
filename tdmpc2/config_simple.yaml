@@ -2,8 +2,8 @@ defaults:
     - override hydra/launcher: submitit_local
 
 # environment
-task: Asterix
-obs: rgb
+task: Pendulum-v1
+obs: state
 task_platform: atari
 
 #only for atari
@@ -11,10 +11,10 @@ gray_scale: false
 obs_to_string: false
 n_skip: 4
 max_episode_steps: 3000
-episode_life: true
-clip_rewards: true
+episode_life: false
+clip_rewards: false
 resize: 96
-action_range: 9
+action_range: 10
 
 # evaluation
 checkpoint: ???
@@ -32,7 +32,7 @@ rho: 0.5
 weight_decay: 1e-4 #only for sgd
 final_lr: 2e-2 #only for sgd
 momentum: 0.9 #only for sgd
-lr: 3e-3
+lr: 3e-4
 optimizer: adam
 enc_lr_scale: 0.3
 grad_clip_norm: 20
@@ -41,7 +41,7 @@ discount_denom: 5
 discount_min: 0.995
 discount_max: 0.999
 buffer_size: 1_000_000
-exp_name: Asterix
+exp_name: Amidar
 data_dir: ???
 #test discrete
 action_mode: continuous
@@ -69,12 +69,12 @@ vmax: +10
 
 # architecture
 model_size: ???
-num_enc_layers: 2
-enc_dim: 512
+num_enc_layers: 1
+enc_dim: 8
 num_channels: 32
-mlp_dim: 512
-latent_dim: 512
-task_dim: 96
+mlp_dim: 8
+latent_dim: 8
+task_dim: 1
 num_q: 5
 dropout: 0.01
 simnorm_dim: 8

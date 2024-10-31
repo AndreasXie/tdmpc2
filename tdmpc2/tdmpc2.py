@@ -19,15 +19,31 @@ class TDMPC2(torch.nn.Module):
 		self.cfg = cfg
 		self.device = torch.device('cuda:0')
 		self.model = WorldModel(cfg).to(self.device)
-		self.optim = torch.optim.Adam([
-			{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
-			{'params': self.model._dynamics.parameters()},
-			{'params': self.model._reward.parameters()},
-			{'params': self.model._Qs.parameters()},
-			{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
-			 }
-		], lr=self.cfg.lr, capturable=True)
-		self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
+		if cfg.get('optimizer','adam') == 'adam':
+			self.optim = torch.optim.Adam([
+				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
+				{'params': self.model._dynamics.parameters()},
+				{'params': self.model._reward.parameters()},
+				{'params': self.model._Qs.parameters()},
+				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
+				}
+			], lr=self.cfg.lr, capturable=True)
+			self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
+		else:
+			self.optim = torch.optim.SGD([
+				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
+				{'params': self.model._dynamics.parameters()},
+				{'params': self.model._reward.parameters()},
+				{'params': self.model._Qs.parameters()},
+				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
+				}
+			], lr=self.cfg.lr,weight_decay=self.cfg.weight_decay,momentum=self.cfg.momentum)
+
+			self.pi_optim = torch.optim.SGD(self.model._pi.parameters(), lr=self.cfg.lr,weight_decay=self.cfg.weight_decay,momentum=self.cfg.momentum)
+			self.lr_scheduler = torch.optim.lr_scheduler.LinearLR(self.optim, start_factor=1, end_factor=0.1, total_iters=self.cfg.steps/5)
+			self.pi_lr_scheduler = torch.optim.lr_scheduler.LinearLR(self.pi_optim, start_factor=1, end_factor=0.1, total_iters=self.cfg.steps/5)
+
+			
 		self.model.eval()
 		self.scale = RunningScale(cfg)
 		self.cfg.iterations += 2*int(cfg.action_dim >= 20) # Heuristic for large action spaces
@@ -38,8 +54,6 @@ class TDMPC2(torch.nn.Module):
 		if cfg.compile:
 			print('compiling - update')
 			self._update = torch.compile(self._update, mode="reduce-overhead")
-		self.action_mode = 'continuous' if cfg.get('task_platform') != 'atari' else 'discrete'
-		self.action_range = cfg.action_range
 
 	@property
 	def plan(self):
@@ -109,10 +123,8 @@ class TDMPC2(torch.nn.Module):
 		else:
 			z = self.model.encode(obs, task)
 			a = self.model.pi(z, task)[int(not eval_mode)][0]
-		if self.action_mode == 'discrete':
-			# a = (a*self.action_range)
-			a = a
-			# a = a.argmax()
+			if self.cfg.action_mode == 'category':
+				a = torch.softmax(a, dim=-1)
 		return a.cpu()
 
 	@torch.no_grad()
@@ -220,6 +232,8 @@ class TDMPC2(torch.nn.Module):
 		pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
 		self.pi_optim.step()
 		self.pi_optim.zero_grad(set_to_none=True)
+		if self.cfg.optimizer != 'adam':
+			self.pi_lr_scheduler.step()
 
 		return pi_loss.detach(), pi_grad_norm
 
@@ -285,6 +299,8 @@ class TDMPC2(torch.nn.Module):
 		grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.grad_clip_norm)
 		self.optim.step()
 		self.optim.zero_grad(set_to_none=True)
+		if self.cfg.optimizer != 'adam':
+			self.lr_scheduler.step()
 
 		# Update policy
 		pi_loss, pi_grad_norm = self.update_pi(zs.detach(), task)

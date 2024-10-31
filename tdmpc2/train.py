@@ -86,6 +86,8 @@ def train(cfg: dict):
 
 	cfg = cfg_to_dataclass(cfg)
 
+	cfg.exp_name = cfg.exp_name + f'_{cfg.action_mode}_{cfg.optimizer}'
+
 	trainer = trainer_cls(
 		cfg=cfg,
 		env=make_env(cfg),

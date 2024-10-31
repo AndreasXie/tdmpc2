@@ -4,6 +4,62 @@ import torch.nn.functional as F
 from tensordict import from_modules
 from copy import deepcopy
 
+class ResidualBlock(nn.Module):
+    """
+    标准残差块：保持特征图尺寸和通道数不变。
+    """
+    def __init__(self, channels):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(channels)
+    
+    def forward(self, x):
+        identity = x
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        
+        out = self.conv2(out)
+        out = self.bn2(out)
+        
+        out += identity
+        out = self.relu(out)
+        return out
+
+class ResidualDownsampleBlock(nn.Module):
+    """
+    残差下采样块：通过步幅 2 进行下采样，同时增加输出通道数。
+    """
+    def __init__(self, in_channels, out_channels):
+        super(ResidualDownsampleBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        
+        self.downsample = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2, bias=False),
+            nn.BatchNorm2d(out_channels)
+        )
+    
+    def forward(self, x):
+        identity = self.downsample(x)
+        
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        
+        out = self.conv2(out)
+        out = self.bn2(out)
+        
+        out += identity
+        out = self.relu(out)
+        return out
+	
 class Ensemble(nn.Module):
 	"""
 	Vectorized ensemble of modules.
@@ -155,6 +211,7 @@ def conv_atari(in_shape, num_channels, act=None):
 		nn.Conv2d(num_channels, num_channels, 5, stride=2, padding=2), nn.ReLU(inplace=False),
 		nn.Conv2d(num_channels, num_channels, 3, stride=2, padding=1), nn.ReLU(inplace=False),
 		nn.Conv2d(num_channels, num_channels, 3,stride=3, padding=1), nn.Flatten()]
+
 	if act:
 		layers.append(act)
 	return nn.Sequential(*layers)

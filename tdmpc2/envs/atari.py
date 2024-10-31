@@ -185,6 +185,8 @@ class WarpFrame(gym.ObservationWrapper):
         else:
             obs = obs.copy()
             obs[self._key] = frame
+        #save a picture of the frame
+        cv2.imwrite('/data/yutaoxie/tdmpc2_discrete/pic/frame.jpg', frame)
         return obs
 
 
@@ -200,7 +202,7 @@ def arr_to_str(arr):
     return img_str
 
 class BaseWrapper(gym.Wrapper):
-    def __init__(self, env, obs_to_string, clip_reward):
+    def __init__(self, env, obs_to_string, clip_reward, action_mode='category'):
         """Cosine Consistency loss function: similarity loss
         Parameters
         ----------
@@ -210,6 +212,7 @@ class BaseWrapper(gym.Wrapper):
         self.obs_to_string = obs_to_string
         self.clip_reward = clip_reward
         self.action_range = env.action_space.n
+        self.action_mode = action_mode
 
     def format_obs(self, obs):
         obs = obs.transpose(2, 0, 1)
@@ -220,7 +223,11 @@ class BaseWrapper(gym.Wrapper):
         return obs
 
     def step(self, action):
-        action = np.clip(np.round(action), 0, self.action_range - 1)
+        # action = np.clip(np.round(action*self.action_range), 0, self.action_range - 1)
+        if self.action_mode == 'category':
+            action = np.clip(np.argmax(action),0, self.action_range - 1)
+        else:
+            action = np.clip(np.round(action*self.action_range), 0, self.action_range - 1)
         obs, reward, done, info = self.env.step(int(action))
         # format observation
         obs = self.format_obs(obs)
@@ -265,16 +272,16 @@ def make_atari(cfg):
         game_name, seed, save_path=None, **kwargs
     """
     # params
-    env_id = cfg.get('task') + 'NoFrameskip-v4'
+    env_id = cfg.get('task')
     gray_scale = cfg.get('gray_scale')
     obs_to_string = cfg.get('obs_to_string')
     skip = cfg.get('n_skip', 4)
-    obs_shape = cfg.get('obs_shape') if cfg.get('obs_shape') != '???' else [3, 84, 84]
+    obs_shape = cfg.get('obs_shape') if cfg.get('obs_shape') != '???' else [3, 96, 96]
     max_episode_steps = cfg.get('max_episode_steps') if cfg.get('max_episode_steps') else 108000 // skip
     episodic_life = cfg.get('episode_life')
     clip_reward = cfg.get('clip_rewards')
 
-    env = gym.make(env_id)
+    env = gym.make(env_id + 'NoFrameskip-v4' if skip == 1 else env_id + 'Deterministic-v4') 
 
     # set seed
     env.seed(cfg.get('seed'))
@@ -283,7 +290,7 @@ def make_atari(cfg):
     env = NoopResetEnv(env, noop_max=30)
 
     # frame skip
-    env = MaxAndSkipEnv(env, skip=skip)
+    env = MaxAndSkipEnv(env, skip=skip) 
 
     # episodic trajectory
     if episodic_life:
@@ -297,8 +304,8 @@ def make_atari(cfg):
 
     # save video to given
     # if cfg.get('save_video'):
-    #     env = Monitor(env, directory=save_path, force=True)
+    #     env = Monitor(env, directory="./video", force=True)
 
     # your wrapper
-    env = BaseWrapper(env, obs_to_string=obs_to_string, clip_reward=clip_reward)
+    env = BaseWrapper(env, obs_to_string=obs_to_string, clip_reward=clip_reward, action_mode=cfg.get('action_mode'))
     return env

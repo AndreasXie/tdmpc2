@@ -12,11 +12,19 @@ class TensorWrapper(gym.Wrapper):
 
 	def __init__(self, env):
 		super().__init__(env)
+		self.action_mode = 'discrete' if isinstance(self.action_space, gym.spaces.Discrete) else 'continuous'
 	
 	def rand_act(self):
+		if self.action_mode == 'discrete':
+			#generate random distribution over actions number
+			act_probs = np.random.rand(self.action_space.n)
+			return torch.tensor(act_probs.astype(np.float32))
+
 		sample = [self.action_space.sample()]
 		sample = np.array(sample)
 		# Convert to tensor
+		if sample.ndim == 2:
+			sample = sample[0]
 
 		return torch.from_numpy(sample.astype(np.float32))
 

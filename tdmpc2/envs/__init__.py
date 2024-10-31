@@ -15,6 +15,10 @@ try:
 except:
 	make_atari_env = missing_dependencies
 try:
+	from envs.simple_env import make_simple as make_simple_env
+except:
+	make_simple_env = missing_dependencies
+try:
 	from envs.dmcontrol import make_env as make_dm_control_env
 except:
 	make_dm_control_env = missing_dependencies
@@ -83,8 +87,11 @@ def make_env(cfg):
 	try:
 		cfg.action_dim = env.action_space.shape[0]
 	except:
-		cfg.action_dim = 1
-		cfg.action_range = env.action_space.n #for atari discrete action space, naively output action index
+		if cfg.action_mode == 'category':
+			cfg.action_dim = cfg.action_range
+		else:
+			cfg.action_dim = 1
+			cfg.action_range = env.action_space.n if cfg.action_range == '???' else cfg.action_range #for atari discrete action space, naively output action index
 
 
 	# cfg.action_range = (0, env.action_space.n-1) if cfg.task_platform == 'atari' else None
