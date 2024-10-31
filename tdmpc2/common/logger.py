@@ -96,6 +96,14 @@ class VideoRecorder:
 			self.frames.append(env.render()) if self.cfg.get('task_platform', 'atari') != 'atari' else self.frames.append(env.render(mode='rgb_array'))
 
 	def save(self, step, key='videos/eval_video'):
+		#save to local as mp4
+		if len(self.frames) > 0:
+			frames = np.stack(self.frames)
+			vid_fp = self._save_dir / f'{step}.mp4'
+			self._wandb.Video(frames.transpose(0, 3, 1, 2), fps=self.fps, format='mp4').to_file(vid_fp)
+			# self._wandb.log({key: self._wandb.Video(vid_fp)}, step=step)
+
+
 		if self.enabled and len(self.frames) > 0:
 			frames = np.stack(self.frames)
 			return self._wandb.log(
