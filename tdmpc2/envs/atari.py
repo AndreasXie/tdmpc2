@@ -122,9 +122,9 @@ class MaxAndSkipEnv(gym.Wrapper):
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
 
-    def render(self, mode='human', **kwargs):
+    def render(self, mode='rgb_array', **kwargs):
         img = self.max_frame
-        img = cv2.resize(img, (400, 400), interpolation=cv2.INTER_AREA).astype(np.uint8)
+        img = cv2.resize(img, (800, 800), interpolation=cv2.INTER_AREA).astype(np.uint8)
         if mode == 'rgb_array':
             return img
         elif mode == 'human':
@@ -186,7 +186,7 @@ class WarpFrame(gym.ObservationWrapper):
             obs = obs.copy()
             obs[self._key] = frame
         #save a picture of the frame
-        cv2.imwrite('/data/yutaoxie/tdmpc2_discrete/pic/frame.jpg', frame)
+        # cv2.imwrite('/data/yutaoxie/tdmpc2_discrete/pic/frame.jpg', frame)
         return obs
 
 
@@ -247,6 +247,9 @@ class BaseWrapper(gym.Wrapper):
 
     def close(self):
         return self.env.close()
+    
+    def render(self, mode='rgb_array', **kwargs):
+        return self.env.render(mode, **kwargs)
 
 
 def make_atari(cfg):

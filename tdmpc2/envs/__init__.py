@@ -88,10 +88,10 @@ def make_env(cfg):
 		cfg.action_dim = env.action_space.shape[0]
 	except:
 		if cfg.action_mode == 'category':
-			cfg.action_dim = cfg.action_range
+			cfg.action_dim = env.action_space.n
 		else:
 			cfg.action_dim = 1
-			cfg.action_range = env.action_space.n if cfg.action_range == '???' else cfg.action_range #for atari discrete action space, naively output action index
+			cfg.action_range = env.action_space.n #for atari discrete action space, naively output action index
 
 
 	# cfg.action_range = (0, env.action_space.n-1) if cfg.task_platform == 'atari' else None
