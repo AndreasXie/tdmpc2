@@ -10,9 +10,9 @@ class TensorWrapper(gym.Wrapper):
 	Wrapper for converting numpy arrays to torch tensors.
 	"""
 
-	def __init__(self, env):
+	def __init__(self, env, cfg=None):
 		super().__init__(env)
-		self.action_mode = 'discrete' if isinstance(self.action_space, gym.spaces.Discrete) else 'continuous'
+		self.action_mode = cfg.get('action_mode', 'category')
 	
 	def rand_act(self):
 		if self.action_mode == 'discrete':
