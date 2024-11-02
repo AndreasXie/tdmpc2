@@ -15,6 +15,7 @@ episode_life: true
 clip_rewards: true
 resize: 96
 action_range: 18
+action_mode: continuous
 
 # evaluation
 checkpoint: ???
@@ -28,10 +29,6 @@ reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
 rho: 0.5
-# lr: 2e-1
-weight_decay: 1e-4 #only for sgd
-final_lr: 2e-2 #only for sgd
-momentum: 0.9 #only for sgd
 lr: 3e-4
 optimizer: adam
 enc_lr_scale: 0.3
@@ -41,10 +38,9 @@ discount_denom: 5
 discount_min: 0.995
 discount_max: 0.999
 buffer_size: 1_000_000
-exp_name: Freeway
+exp_name: digit
 data_dir: ???
-#test discrete
-action_mode: continuous
+
 
 # planning
 mpc: false

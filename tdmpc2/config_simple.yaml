@@ -2,27 +2,27 @@ defaults:
     - override hydra/launcher: submitit_local
 
 # environment
-task: Pendulum-v1
+task: CartPole-v1
 obs: state
 task_platform: atari
 
 #only for atari
 gray_scale: false
 obs_to_string: false
-n_skip: 4
-max_episode_steps: 3000
+n_skip: 1
+max_episode_steps: 200
 episode_life: false
 clip_rewards: false
 resize: 96
-action_range: 10
+action_range: 1
 
 # evaluation
 checkpoint: ???
 eval_episodes: 10
-eval_freq: 5000
+eval_freq: 10
 
 # training
-steps: 300_000
+steps: 2_000
 batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1
@@ -32,7 +32,7 @@ rho: 0.5
 weight_decay: 1e-4 #only for sgd
 final_lr: 2e-2 #only for sgd
 momentum: 0.9 #only for sgd
-lr: 3e-4
+lr: 3e-3
 optimizer: adam
 enc_lr_scale: 0.3
 grad_clip_norm: 20
@@ -41,7 +41,7 @@ discount_denom: 5
 discount_min: 0.995
 discount_max: 0.999
 buffer_size: 1_000_000
-exp_name: Amidar
+exp_name: CartPole
 data_dir: ???
 #test discrete
 action_mode: continuous
@@ -59,31 +59,31 @@ temperature: 0.5
 
 # actor
 log_std_min: -10
-log_std_max: 2
+log_std_max: -5
 entropy_coef: 1e-4
 
 # critic
-num_bins: 101
-vmin: -10
-vmax: +10
+num_bins: 10
+vmin: -1
+vmax: +100
 
 # architecture
 model_size: ???
 num_enc_layers: 1
-enc_dim: 8
+enc_dim: 4
 num_channels: 32
-mlp_dim: 8
-latent_dim: 8
+mlp_dim: 4
+latent_dim: 4
 task_dim: 1
 num_q: 5
-dropout: 0.01
-simnorm_dim: 8
+dropout: 0.001
+simnorm_dim: 4
 
 # logging
 wandb_project: test_atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: true
+enable_wandb: false
 save_csv: true
 
 # misc

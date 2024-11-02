@@ -29,7 +29,7 @@ reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
 rho: 0.5
-lr: 3e-3
+lr: 3e-4
 optimizer: adam
 enc_lr_scale: 0.3
 grad_clip_norm: 20
@@ -83,7 +83,7 @@ enable_wandb: true
 save_csv: true
 
 # misc
-save_video: false #should be solved in atari
+save_video: true #should be solved in atari
 save_agent: false
 seed: 1
 

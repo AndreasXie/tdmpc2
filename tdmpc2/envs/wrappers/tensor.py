@@ -15,7 +15,7 @@ class TensorWrapper(gym.Wrapper):
 		self.action_mode = cfg.get('action_mode', 'category')
 	
 	def rand_act(self):
-		if self.action_mode == 'discrete':
+		if self.action_mode == 'category':
 			#generate random distribution over actions number
 			act_probs = np.random.rand(self.action_space.n)
 			return torch.tensor(act_probs.astype(np.float32))

@@ -186,8 +186,7 @@ class WarpFrame(gym.ObservationWrapper):
         else:
             obs = obs.copy()
             obs[self._key] = frame
-        #save a picture of the frame
-        # cv2.imwrite('/data/yutaoxie/tdmpc2_discrete/pic/frame.jpg', frame)
+
         return obs
 
 
@@ -202,7 +201,7 @@ def arr_to_str(arr):
 
     return img_str
 
-class BaseWrapper(gym.Wrapper):
+class PixelWrapper(gym.Wrapper):
     def __init__(self, env, obs_to_string, clip_reward, action_mode='category'):
         """Cosine Consistency loss function: similarity loss
         Parameters
@@ -214,6 +213,7 @@ class BaseWrapper(gym.Wrapper):
         self.clip_reward = clip_reward
         self.action_range = env.action_space.n
         self.action_mode = action_mode
+        self.thresholds = np.linspace(0, 1, self.action_range+1)
 
     def format_obs(self, obs):
         obs = obs.transpose(2, 0, 1)
@@ -228,9 +228,10 @@ class BaseWrapper(gym.Wrapper):
         if self.action_mode == 'category':
             action = np.clip(np.argmax(action),0, self.action_range - 1)
         else:
-            action = np.clip(np.round(action*self.action_range), 0, self.action_range - 1)
+            action = np.digitize(action, self.thresholds) - 1
+            action = np.clip(action, 0, self.action_range - 1)
         obs, reward, done, info = self.env.step(int(action))
-        # format observation
+
         obs = self.format_obs(obs)
 
         info['raw_reward'] = reward
@@ -251,7 +252,45 @@ class BaseWrapper(gym.Wrapper):
     
     def render(self, mode='rgb_array', **kwargs):
         return self.env.render(mode, **kwargs)
+class SimpleWrapper(gym.Wrapper):
+    def __init__(self, env, clip_reward, action_mode='category'):
+        """Cosine Consistency loss function: similarity loss
+        Parameters
+        ----------
+        obs_to_string: bool. Convert the observation to jpeg string if True, in order to save memory usage.
+        """
+        super().__init__(env)
+        self.clip_reward = clip_reward
+        self.action_range = env.action_space.n
+        self.action_mode = action_mode
+        self.thresholds = np.linspace(0, 1, self.action_range+1)
+    
+    def step(self, action):
+        # action = np.clip(np.round(action*self.action_range), 0, self.action_range - 1)
+        if self.action_mode == 'category':
+            action = np.clip(np.argmax(action),0, self.action_range - 1)
+        else:
+            action = np.digitize(action, self.thresholds) - 1
+            action = np.clip(action, 0, self.action_range - 1)
 
+        obs, reward, done, info = self.env.step(int(action))
+
+        info['raw_reward'] = reward
+        if self.clip_reward:
+            reward = np.sign(reward)
+
+        return obs, reward, done, info
+
+    def reset(self, **kwargs):
+        obs = self.env.reset(**kwargs)
+
+        return obs
+
+    def close(self):
+        return self.env.close()
+    
+    def render(self, mode='rgb_array', **kwargs):
+        return self.env.render(mode, **kwargs)
 
 def make_atari(cfg):
     """Make Atari games
@@ -285,31 +324,35 @@ def make_atari(cfg):
     episodic_life = cfg.get('episode_life')
     clip_reward = cfg.get('clip_rewards')
 
-    env = gym.make(env_id + 'NoFrameskip-v4' if skip == 1 else env_id + 'Deterministic-v4') 
+    if "v1" in env_id:#which means the game is from the old version of gym and maybe no pixel wrapper is needed
+        env = gym.make(env_id)
 
-    # set seed
-    env.seed(cfg.get('seed'))
+        env = SimpleWrapper(env, clip_reward=clip_reward, action_mode=cfg.get('action_mode'))
+    else:
+        env = gym.make(env_id + 'NoFrameskip-v4' if skip == 1 else env_id + 'Deterministic-v4') 
 
-    # random restart
-    env = NoopResetEnv(env, noop_max=30)
+        # random restart
+        env = NoopResetEnv(env, noop_max=30)
 
-    # frame skip
-    env = MaxAndSkipEnv(env, skip=skip) 
+        # frame skip
+        env = MaxAndSkipEnv(env, skip=skip) 
 
-    # episodic trajectory
-    if episodic_life:
-        env = EpisodicLifeEnv(env)
+        # episodic trajectory
+        if episodic_life:
+            env = EpisodicLifeEnv(env)
 
-    # reshape size and gray scale
-    env = WarpFrame(env, width=obs_shape[1], height=obs_shape[2], grayscale=gray_scale)
+        # set seed
+        env.seed(cfg.get('seed'))
+            # reshape size and gray scale
+        env = WarpFrame(env, width=obs_shape[1], height=obs_shape[2], grayscale=gray_scale)
 
-    # set max limit
-    env = TimeLimit(env, max_episode_steps=max_episode_steps)
+            # set max limit
+        env = TimeLimit(env, max_episode_steps=max_episode_steps)
 
-    # save video to given
-    # if cfg.get('save_video'):
-    #     env = Monitor(env, directory="./video", force=True)
+        # save video to given
+        # if cfg.get('save_video'):
+        #     env = Monitor(env, directory="./video", force=True)
 
-    # your wrapper
-    env = BaseWrapper(env, obs_to_string=obs_to_string, clip_reward=clip_reward, action_mode=cfg.get('action_mode'))
+        # your wrapper
+        env = PixelWrapper(env, obs_to_string=obs_to_string, clip_reward=clip_reward, action_mode=cfg.get('action_mode'))
     return env
