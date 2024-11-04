@@ -29,6 +29,11 @@ class TDMPC2(torch.nn.Module):
 				}
 			], lr=self.cfg.lr, capturable=True)
 		self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
+		if cfg.get('autotune') == True:
+			self.target_entropy = self.cfg.get('target_entropy_scale', 0.89)*torch.log(1/torch.tensor(cfg.action_dim, device=self.device))
+			self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
+			self.cfg.entropy_coef = self.log_alpha.exp().item()
+			self.a_optimizer = torch.optim.Adam([self.log_alpha], lr=self.cfg.lr, eps=1e-4)
 
 		self.model.eval()
 		self.scale = RunningScale(cfg)
@@ -232,7 +237,7 @@ class TDMPC2(torch.nn.Module):
 		"""
 		_, action_probs, log_probs = self.model.pi(zs, task)
 
-		qs = self.model.Q(zs, task, return_type='avg', detach=True)
+		qs = self.model.Q(zs, task, return_type='min', detach=True)
 		self.scale.update(qs[0])
 		qs = self.scale(qs)
 
@@ -243,6 +248,13 @@ class TDMPC2(torch.nn.Module):
 		pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
 		self.pi_optim.step()
 		self.pi_optim.zero_grad(set_to_none=True)
+		if self.cfg.autotune:
+			#alpha_loss = (action_probs.detach() * (-log_alpha.exp() * (log_pi + target_entropy).detach())).mean()
+			alpha_loss = (action_probs.detach() * (-self.log_alpha.exp() * (log_probs + self.target_entropy).detach())).mean()
+			self.a_optimizer.zero_grad()
+			alpha_loss.backward()
+			self.a_optimizer.step()
+			self.cfg.entropy_coef = self.log_alpha.exp().item()
 
 		return pi_loss.detach(), pi_grad_norm
 
@@ -259,7 +271,7 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			torch.Tensor: TD-target.
 		"""
-		pi = self.model.pi(next_z, task)[1] if self.cfg.get('action_mode') == 'discrete' else self.model.pi(next_z, task)[0]
+		pi = self.model.pi(next_z, task)[1]
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		return reward + discount * self.model.Q(next_z, pi, task, return_type='min', target=True)
 
@@ -340,7 +352,7 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			torch.Tensor: TD-target.
 		"""
-		_,next_act_prob, next_log_prob = self.model.pi(next_z, task)
+		_, next_act_prob, next_log_prob = self.model.pi(next_z, task)
 		next_q_target = self.model.Q(next_z, task, return_type='min', target=True)
 		min_q_next_target = next_act_prob * (next_q_target - self.cfg.entropy_coef * next_log_prob)
 		min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True)
@@ -378,8 +390,8 @@ class TDMPC2(torch.nn.Module):
 		for t, (rew_pred_unbind, rew_unbind, td_targets_unbind, qs_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0), td_targets.unbind(0), qs.unbind(1))):
 			reward_loss = reward_loss + math.soft_ce(rew_pred_unbind, rew_unbind, self.cfg).mean() * self.cfg.rho**t
 			for _, qs_unbind_unbind in enumerate(qs_unbind.unbind(0)):
-				value_loss = value_loss + torch.nn.functional.mse_loss(qs_unbind_unbind.gather(1,action[t].long()).view(-1), td_targets_unbind, self.cfg).mean() * self.cfg.rho**t
-				# value_loss = value_loss + math.soft_ce(qs_unbind_unbind.gather(1,action[t].long()).view(-1), td_targets_unbind, self.cfg).mean() * self.cfg.rho**t
+				qs_unbind_unbind_act = qs_unbind_unbind.gather(1,action[t].long()).view(-1)
+				value_loss = value_loss + torch.nn.functional.mse_loss(qs_unbind_unbind_act, td_targets_unbind).mean() * self.cfg.rho**t
 
 		consistency_loss = consistency_loss / self.cfg.horizon
 		reward_loss = reward_loss / self.cfg.horizon
@@ -412,7 +424,7 @@ class TDMPC2(torch.nn.Module):
 			"total_loss": total_loss,
 			"grad_norm": grad_norm,
 			"pi_grad_norm": pi_grad_norm,
-			"pi_scale": self.scale.value,
+			# "pi_scale": self.scale.value,
 		}).detach().mean()
 	
 	def update(self, buffer):

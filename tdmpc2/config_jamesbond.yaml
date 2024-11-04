@@ -15,12 +15,12 @@ episode_life: true
 clip_rewards: true
 resize: 96
 action_range: 18
-action_mode: continuous
+action_mode: discrete
 
 # evaluation
 checkpoint: ???
 eval_episodes: 10
-eval_freq: 5000
+eval_freq: 2500
 
 # training
 steps: 300_000
@@ -28,17 +28,17 @@ batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
-rho: 0.5
-lr: 3e-4
+rho: 0.4
+lr: 3e-3
 optimizer: adam
-enc_lr_scale: 0.3
+enc_lr_scale: 1.0
 grad_clip_norm: 20
 tau: 0.01
 discount_denom: 5
-discount_min: 0.995
-discount_max: 0.999
+discount_min: 0.990
+discount_max: 0.995
 buffer_size: 1_000_000
-exp_name: digit
+exp_name: Jamesbond_discrete_SAC
 data_dir: ???
 
 
@@ -56,7 +56,7 @@ temperature: 0.5
 # actor
 log_std_min: -10
 log_std_max: 2
-entropy_coef: 1e-4
+entropy_coef: 1e-5
 
 # critic
 num_bins: 101
@@ -85,7 +85,7 @@ save_csv: true
 # misc
 save_video: true #should be solved in atari
 save_agent: false
-seed: 1
+seed: 2
 
 # convenience
 work_dir: ???

@@ -7,6 +7,12 @@ from torch.distributions import Categorical
 from common import layers, math, init
 from tensordict.nn import TensorDictParams
 
+def init_weights_he_normal(m):
+    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
+
 class WorldModelDiscrete(nn.Module):
 	"""
 	TD-MPC2 implicit world model architecture for discrete actions.
@@ -32,6 +38,13 @@ class WorldModelDiscrete(nn.Module):
 		self.init()
 
 	def init(self):
+		if self.cfg.get('obs', 'rgb') == 'rgb':# HE init
+			self._encoder.apply(init_weights_he_normal)
+			self._dynamics.apply(init_weights_he_normal)
+			self._reward.apply(init_weights_he_normal)
+			self._pi.apply(init_weights_he_normal)
+			self._Qs.apply(init_weights_he_normal)
+
 		# Create params
 		self._detach_Qs_params = TensorDictParams(self._Qs.params.data, no_convert=True)
 		self._target_Qs_params = TensorDictParams(self._Qs.params.data.clone(), no_convert=True)
@@ -134,9 +147,9 @@ class WorldModelDiscrete(nn.Module):
 		policy_dist = Categorical(logits=logits)
 		a1 = policy_dist.sample()
 
-		if len(a1.shape)==2: #DM: handling batched embeddings; temporary fix due to distributions.category nuances
+		if len(a1.shape)==2: 
 			actions = torch.reshape(a1, (a1.shape[0], a1.shape[1], 1))
-		elif len(a1.shape)==1: #DM: handling case in which a single embedding is passed
+		elif len(a1.shape)==1: 
 			actions = a1
 		action_probs = policy_dist.probs
 		log_probs = torch.nn.functional.log_softmax(logits, dim=-1)

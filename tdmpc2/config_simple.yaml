@@ -22,17 +22,13 @@ eval_episodes: 10
 eval_freq: 10
 
 # training
-steps: 2_000
+steps: 100_000
 batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
 rho: 0.5
-# lr: 2e-1
-weight_decay: 1e-4 #only for sgd
-final_lr: 2e-2 #only for sgd
-momentum: 0.9 #only for sgd
-lr: 3e-3
+lr: 3e-4
 optimizer: adam
 enc_lr_scale: 0.3
 grad_clip_norm: 20
@@ -44,7 +40,8 @@ buffer_size: 1_000_000
 exp_name: CartPole
 data_dir: ???
 #test discrete
-action_mode: continuous
+action_mode: discrete
+autotune: true
 
 # planning
 mpc: false
@@ -60,7 +57,8 @@ temperature: 0.5
 # actor
 log_std_min: -10
 log_std_max: -5
-entropy_coef: 1e-4
+entropy_coef: 2e-2
+target_entropy: 0.89
 
 # critic
 num_bins: 10
