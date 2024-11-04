@@ -238,8 +238,8 @@ class TDMPC2(torch.nn.Module):
 		_, action_probs, log_probs = self.model.pi(zs, task)
 
 		qs = self.model.Q(zs, task, return_type='min', detach=True)
-		self.scale.update(qs[0])
-		qs = self.scale(qs)
+		# self.scale.update(qs[0])
+		# qs = self.scale(qs)
 
 		# Loss is a weighted sum of Q-values
 		rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
@@ -256,7 +256,7 @@ class TDMPC2(torch.nn.Module):
 			self.a_optimizer.step()
 			self.cfg.entropy_coef = self.log_alpha.exp().item()
 
-		return pi_loss.detach(), pi_grad_norm
+		return pi_loss.detach(), pi_grad_norm, self.log_alpha.item()
 
 	@torch.no_grad()
 	def _td_target(self, next_z, reward, task):
@@ -409,7 +409,7 @@ class TDMPC2(torch.nn.Module):
 		self.optim.zero_grad(set_to_none=True)
 
 		# Update policy
-		pi_loss, pi_grad_norm = self.update_pi_discrete(zs.detach(), task)
+		pi_loss, pi_grad_norm, log_alpha = self.update_pi_discrete(zs.detach(), task)
 
 		# Update target Q-functions
 		self.model.soft_update_target_Q()
@@ -424,7 +424,7 @@ class TDMPC2(torch.nn.Module):
 			"total_loss": total_loss,
 			"grad_norm": grad_norm,
 			"pi_grad_norm": pi_grad_norm,
-			# "pi_scale": self.scale.value,
+			"log_alpha": log_alpha
 		}).detach().mean()
 	
 	def update(self, buffer):
