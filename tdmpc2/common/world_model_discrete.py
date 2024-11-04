@@ -2,14 +2,15 @@ from copy import deepcopy
 
 import torch
 import torch.nn as nn
+from torch.distributions import Categorical
 
 from common import layers, math, init
 from tensordict.nn import TensorDictParams
 
-class WorldModel(nn.Module):
+class WorldModelDiscrete(nn.Module):
 	"""
-	TD-MPC2 implicit world model architecture.
-	Can be used for both single-task and multi-task experiments.
+	TD-MPC2 implicit world model architecture for discrete actions.
+	Can be used for both single-task experiments with discrete actions.
 	"""
 
 	def __init__(self, cfg):
@@ -21,15 +22,13 @@ class WorldModel(nn.Module):
 			for i in range(len(cfg.tasks)):
 				self._action_masks[i, :cfg.action_dims[i]] = 1.
 		self._encoder = layers.enc(cfg)
-		self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
-		self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
-		self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim)
-		self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
+		self._dynamics = layers.mlp(cfg.latent_dim + 1 + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
+		self._reward = layers.mlp(cfg.latent_dim + 1 + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
+		self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.action_dim)
+		self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.action_dim, dropout=cfg.dropout) for _ in range(cfg.num_q)])
 		self.apply(init.weight_init)
 		init.zero_([self._reward[-1].weight, self._Qs.params["2", "weight"]])
 
-		self.register_buffer("log_std_min", torch.tensor(cfg.log_std_min))
-		self.register_buffer("log_std_dif", torch.tensor(cfg.log_std_max) - self.log_std_min)
 		self.init()
 
 	def init(self):
@@ -131,25 +130,20 @@ class WorldModel(nn.Module):
 			z = self.task_emb(z, task)
 
 		# Gaussian policy prior
-		mu, log_std = self._pi(z).chunk(2, dim=-1)
-		log_std = math.log_std(log_std, self.log_std_min, self.log_std_dif)
-		eps = torch.randn_like(mu)
+		logits = self._pi(z)
+		policy_dist = Categorical(logits=logits)
+		a1 = policy_dist.sample()
 
-		if self.cfg.multitask: # Mask out unused action dimensions
-			mu = mu * self._action_masks[task]
-			log_std = log_std * self._action_masks[task]
-			eps = eps * self._action_masks[task]
-			action_dims = self._action_masks.sum(-1)[task].unsqueeze(-1)
-		else: # No masking
-			action_dims = None
+		if len(a1.shape)==2: #DM: handling batched embeddings; temporary fix due to distributions.category nuances
+			actions = torch.reshape(a1, (a1.shape[0], a1.shape[1], 1))
+		elif len(a1.shape)==1: #DM: handling case in which a single embedding is passed
+			actions = a1
+		action_probs = policy_dist.probs
+		log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
+		
+		return actions, action_probs, log_probs
 
-		log_pi = math.gaussian_logprob(eps, log_std, size=action_dims)
-		pi = mu + eps * log_std.exp()
-		mu, pi, log_pi = math.squash(mu, pi, log_pi)
-
-		return mu, pi, log_pi, log_std
-
-	def Q(self, z, a, task, return_type='min', target=False, detach=False):
+	def Q(self, z, task, return_type='min', target=False, detach=False):
 		"""
 		Predict state-action value.
 		`return_type` can be one of [`min`, `avg`, `all`]:
@@ -163,7 +157,6 @@ class WorldModel(nn.Module):
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
 
-		z = torch.cat([z, a], dim=-1)
 		if target:
 			qnet = self._target_Qs
 		elif detach:
@@ -175,8 +168,8 @@ class WorldModel(nn.Module):
 		if return_type == 'all':
 			return out
 
-		qidx = torch.randperm(self.cfg.num_q, device=out.device)[:2]
-		Q = math.two_hot_inv(out[qidx], self.cfg)
+		qidx = torch.randperm(self.cfg.num_q, device=out.device)# Here we use all 5 Q-values to compute the avg
+		Q = out[qidx]
 		if return_type == "min":
 			return Q.min(0).values
-		return Q.sum(0) / 2
+		return Q.sum(0) / 5

@@ -36,6 +36,10 @@ class RunningScale(torch.nn.Module):
 		return (d0+d1).reshape(-1, *x_shape[1:]).to(x_dtype)
 
 	def update(self, x):
+		x1 = x.sum(-1)
+			#set_trace()
+		x2 = x1.reshape(x1.shape[0], 1)
+		x = x2
 		percentiles = self._percentile(x.detach())
 		value = torch.clamp(percentiles[1] - percentiles[0], min=1.)
 		self.value.data.lerp_(value, self.cfg.tau)

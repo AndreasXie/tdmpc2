@@ -227,9 +227,11 @@ class PixelWrapper(gym.Wrapper):
         # action = np.clip(np.round(action*self.action_range), 0, self.action_range - 1)
         if self.action_mode == 'category':
             action = np.clip(np.argmax(action),0, self.action_range - 1)
-        else:
+        elif self.action_mode == 'continuous':
             action = np.digitize(action, self.thresholds) - 1
             action = np.clip(action, 0, self.action_range - 1)
+        else:#discrete
+            pass
         obs, reward, done, info = self.env.step(int(action))
 
         obs = self.format_obs(obs)

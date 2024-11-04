@@ -15,7 +15,7 @@ episode_life: true
 clip_rewards: true
 resize: 96
 action_range: 9
-action_mode: continuous
+action_mode: discrete
 
 # evaluation
 checkpoint: ???
@@ -79,7 +79,7 @@ simnorm_dim: 8
 wandb_project: test_atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: true
+enable_wandb: false
 save_csv: true
 
 # misc

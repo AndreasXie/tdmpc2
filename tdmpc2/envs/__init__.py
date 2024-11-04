@@ -87,14 +87,12 @@ def make_env(cfg):
 	try:
 		cfg.action_dim = env.action_space.shape[0]
 	except:
-		if cfg.action_mode == 'category':
+		if cfg.action_mode == 'discrete':
 			cfg.action_dim = env.action_space.n
 		else:
 			cfg.action_dim = 1
 			cfg.action_range = env.action_space.n #for atari discrete action space, naively output action index
 
-
-	# cfg.action_range = (0, env.action_space.n-1) if cfg.task_platform == 'atari' else None
 	cfg.episode_length = env.max_episode_steps if hasattr(env, 'max_episode_steps') else cfg.max_episode_steps
 	cfg.seed_steps = max(1000, 5*cfg.episode_length)
 	# cfg.seed_steps = 200
