@@ -81,7 +81,7 @@ simnorm_dim: 4
 wandb_project: test_atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: false
+enable_wandb: true
 save_csv: true
 
 # misc

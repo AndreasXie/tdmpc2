@@ -29,18 +29,18 @@ reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
 rho: 0.4
-lr: 3e-3
+lr: 3e-4
 optimizer: adam
-enc_lr_scale: 1.0
+enc_lr_scale: 0.3
 grad_clip_norm: 20
 tau: 0.01
 discount_denom: 5
 discount_min: 0.990
 discount_max: 0.995
 buffer_size: 1_000_000
-exp_name: Jamesbond_discrete_SAC
+exp_name: Full_Discrete_SAC
 data_dir: ???
-
+autotune: true
 
 # planning
 mpc: false
@@ -56,7 +56,8 @@ temperature: 0.5
 # actor
 log_std_min: -10
 log_std_max: 2
-entropy_coef: 1e-5
+entropy_coef: 2e-2
+target_entropy: 0.89
 
 # critic
 num_bins: 101

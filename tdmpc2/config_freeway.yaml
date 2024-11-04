@@ -15,7 +15,7 @@ episode_life: false
 clip_rewards: true
 resize: 96
 action_range: 3
-action_mode: continuous
+action_mode: discrete
 
 # evaluation
 checkpoint: ???
@@ -41,6 +41,7 @@ buffer_size: 1_000_000
 exp_name: Freeway
 data_dir: ???
 #test discrete
+autotune: true
 
 # planning
 mpc: false
@@ -56,7 +57,8 @@ temperature: 0.5
 # actor
 log_std_min: -10
 log_std_max: 2
-entropy_coef: 1e-4
+entropy_coef: 2e-2
+target_entropy: 0.89
 
 # critic
 num_bins: 101
