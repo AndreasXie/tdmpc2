@@ -424,7 +424,7 @@ class TDMPC2(torch.nn.Module):
 			"total_loss": total_loss,
 			"grad_norm": grad_norm,
 			"pi_grad_norm": pi_grad_norm,
-			"log_alpha": log_alpha
+			"log_alpha": log_alpha if self.cfg.autotune else 0
 		}).detach().mean()
 	
 	def update(self, buffer):
