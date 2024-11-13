@@ -7,11 +7,6 @@ from torch.distributions import Categorical
 from common import layers, math, init
 from tensordict.nn import TensorDictParams
 
-def init_weights_he_normal(m):
-    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-        nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
-        if m.bias is not None:
-            nn.init.zeros_(m.bias)
 
 class WorldModelDiscrete(nn.Module):
 	"""
@@ -38,13 +33,6 @@ class WorldModelDiscrete(nn.Module):
 		self.init()
 
 	def init(self):
-		if self.cfg.get('obs', 'rgb') == 'rgb':# HE init
-			self._encoder.apply(init_weights_he_normal)
-			self._dynamics.apply(init_weights_he_normal)
-			self._reward.apply(init_weights_he_normal)
-			self._pi.apply(init_weights_he_normal)
-			self._Qs.apply(init_weights_he_normal)
-
 		# Create params
 		self._detach_Qs_params = TensorDictParams(self._Qs.params.data, no_convert=True)
 		self._target_Qs_params = TensorDictParams(self._Qs.params.data.clone(), no_convert=True)
@@ -132,7 +120,23 @@ class WorldModelDiscrete(nn.Module):
 			z = self.task_emb(z, task)
 		z = torch.cat([z, a], dim=-1)
 		return self._reward(z)
+	
+	def critic_pi(self, z, task):
+		actions = torch.eye(self.cfg.action_dim, device=z.device).unsqueeze(0)
+		if z.dim() == 2:
+			# z (batch_size, latent_dim) -> (batch_size, action_dim, latent_dim)
+			z = z.unsqueeze(1).expand(-1, self.cfg.action_dim, -1)
+			actions = actions.repeat(z.shape[0], 1, 1)
+		elif z.dim() == 3:
+			# z (seq_len, batch_size, latent_dim) -> (seq_len, batch_size, action_dim, latent_dim)
+			z = z.unsqueeze(2).expand(-1, -1, self.cfg.action_dim, -1)
+			actions = actions.unsqueeze(0).repeat(z.shape[0], z.shape[1], 1, 1)
+		Q = self.Q(z, actions, task, return_type='min')
+		action = Q.argmax(dim=-2)
+		onehot_action = math.int_to_one_hot(action, self.cfg.action_dim)
 
+		return action, onehot_action, None, None
+	
 	def pi(self, z, task):
 		"""
 		Samples an action from the policy prior.

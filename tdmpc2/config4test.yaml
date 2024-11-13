@@ -28,7 +28,7 @@ reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
 rho: 0.5
-lr: 3e-4
+lr: 6e-4
 enc_lr_scale: 0.3
 grad_clip_norm: 20
 tau: 0.01
@@ -39,6 +39,7 @@ buffer_size: 1_000_000
 exp_name: default
 data_dir: ???
 action_mode: discrete
+test_mode: sac
 
 # planning
 mpc: false
@@ -55,7 +56,7 @@ temperature: 0.5
 log_std_min: -10
 log_std_max: 2
 entropy_coef: 1e-4
-autotune: false
+autotune: true
 
 # critic
 num_bins: 101
@@ -78,12 +79,12 @@ simnorm_dim: 8
 wandb_project: Atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: false
-save_csv: true
+enable_wandb: true
+save_csv: false
 
 # misc
-save_video: true
-save_agent: true
+save_video: false
+save_agent: false
 seed: 1
 
 # convenience

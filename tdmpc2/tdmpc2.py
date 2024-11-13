@@ -111,11 +111,13 @@ class TDMPC2(torch.nn.Module):
 			task = torch.tensor([task], device=self.device)
 		if self.cfg.mpc:
 			a = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
-		else:
+		elif self.cfg.get("test_mode") != 'critic_only':
 			z = self.model.encode(obs, task)
 			a = self.model.pi(z, task)[1]
-			# if self.cfg.task_platform == 'atari':
-			# 	action = action.squeeze(0) # TODO: this is a bit hacky
+		else:
+			z = self.model.encode(obs, task)
+			a = self.model.critic_pi(z, task)[1]
+
 		return a.cpu()
 
 	@torch.no_grad()
@@ -248,9 +250,9 @@ class TDMPC2(torch.nn.Module):
 			z = z.unsqueeze(2).expand(-1, -1, self.cfg.action_dim, -1)
 			actions = actions.unsqueeze(0).repeat(z.shape[0], z.shape[1], 1, 1)
 		
-		qs = self.model.Q(z, actions, task, return_type='min', detach=True).squeeze(-1)
-		# self.scale.update(qs[0])
-		# qs = self.scale(qs)
+		qs = self.model.Q(z, actions, task, return_type='avg', detach=True).squeeze(-1)
+		self.scale.update(torch.sum(action_probs*qs,dim=(1,2),keepdim=True)[0])
+		qs = self.scale(qs)
 
 		# Loss is a weighted sum of Q-values
 		rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
@@ -260,7 +262,6 @@ class TDMPC2(torch.nn.Module):
 		self.pi_optim.step()
 		self.pi_optim.zero_grad(set_to_none=True)
 		if self.cfg.autotune:
-			#alpha_loss = (action_probs.detach() * (-log_alpha.exp() * (log_pi + target_entropy).detach())).mean()
 			alpha_loss = (action_probs.detach() * (-self.log_alpha.exp() * (log_probs + self.target_entropy).detach())).mean()
 			self.a_optimizer.zero_grad()
 			alpha_loss.backward()
@@ -351,6 +352,7 @@ class TDMPC2(torch.nn.Module):
 			"pi_scale": self.scale.value,
 		}).detach().mean()
 	
+	@torch.no_grad()
 	def _td_target_discrete(self, next_z, reward, task, done):
 		"""
 		Compute the TD-target from a reward and the observation at the following time step.
@@ -382,17 +384,36 @@ class TDMPC2(torch.nn.Module):
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		td_targets = reward + discount * min_q_next_target*(1-done)
 		return td_targets
- 
+	
+	@torch.no_grad()
+	def _td_target_critic(self, next_z, reward, done, task):
+		"""
+		Compute the TD-target from a reward and the observation at the following time step.
+
+		Args:
+			next_z (torch.Tensor): Latent state at the following time step.
+			reward (torch.Tensor): Reward at the current time step.
+			task (torch.Tensor): Task index (only used for multi-task experiments).
+
+		Returns:
+			torch.Tensor: TD-target.
+		"""
+		pi = self.model.critic_pi(next_z, task)[1]
+		if self.cfg.action == 'discrete':
+			pi = pi.squeeze(2) # TODO: this is a bit hacky
+		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
+		qs = self.model.Q(next_z, pi, task, return_type='min', target=True)
+		return reward + discount * qs * (1-done)
+
 	def _update_discrete(self, obs, action, reward, done, task=None):
 		# Compute targets
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
-			td_targets = self._td_target_discrete(next_z, reward, task, done)
+			td_targets = self._td_target_discrete(next_z, reward, task, done) if self.cfg.get('test_mode') != 'critic_only' else self._td_target_critic(next_z, reward, task, done)
 
 		# Prepare for update
 		self.model.train()
 
-		# Latent rollout
 		# Latent rollout
 		zs = torch.empty(self.cfg.horizon+1, self.cfg.batch_size, self.cfg.latent_dim, device=self.device)
 		z = self.model.encode(obs[0], task)
@@ -431,7 +452,10 @@ class TDMPC2(torch.nn.Module):
 		self.optim.zero_grad(set_to_none=True)
 
 		# Update policy
-		pi_loss, pi_grad_norm, log_alpha = self.update_pi_discrete(zs.detach(), task)
+		if self.cfg.get('test_mode') != 'critic_only':
+			pi_loss, pi_grad_norm, log_alpha = self.update_pi_discrete(zs.detach(), task)
+		else:
+			pi_loss, pi_grad_norm, log_alpha = 0.,0.,0.
 
 		# Update target Q-functions
 		self.model.soft_update_target_Q()
