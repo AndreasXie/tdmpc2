@@ -10,10 +10,9 @@ from envs.wrappers.tensor import TensorWrapper
 
 def missing_dependencies(task):
 	raise ValueError(f'Missing dependencies for task {task}; install dependencies to use this environment.')
-try:
-	from envs.atari import make_atari as make_atari_env
-except:
-	make_atari_env = missing_dependencies
+
+from envs.atari import make_atari as make_atari_env
+
 try:
 	from envs.simple_env import make_simple as make_simple_env
 except:

@@ -113,7 +113,9 @@ class TDMPC2(torch.nn.Module):
 			a = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
 		else:
 			z = self.model.encode(obs, task)
-			a = self.model.pi(z, task)[0]
+			a = self.model.pi(z, task)[1]
+			# if self.cfg.task_platform == 'atari':
+			# 	action = action.squeeze(0) # TODO: this is a bit hacky
 		return a.cpu()
 
 	@torch.no_grad()
@@ -224,7 +226,7 @@ class TDMPC2(torch.nn.Module):
 
 		return pi_loss.detach(), pi_grad_norm
 	
-	def update_pi_discrete(self, zs, task):
+	def update_pi_discrete(self, z, task):
 		"""
 		Update policy using a sequence of latent states.
 
@@ -235,9 +237,18 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			float: Loss of the policy update.
 		"""
-		_, action_probs, log_probs = self.model.pi(zs, task)
-
-		qs = self.model.Q(zs, task, return_type='min', detach=True)
+		_, _, action_probs, log_probs = self.model.pi(z, task)
+		actions = actions = torch.eye(self.cfg.action_dim, device=z.device).unsqueeze(0)
+		if z.dim() == 2:
+			# z (batch_size, latent_dim) -> (batch_size, action_dim, latent_dim)
+			z = z.unsqueeze(1).expand(-1, self.cfg.action_dim, -1)
+			actions = actions.repeat(z.shape[0], 1, 1)
+		elif z.dim() == 3:
+			# z (seq_len, batch_size, latent_dim) -> (seq_len, batch_size, action_dim, latent_dim)
+			z = z.unsqueeze(2).expand(-1, -1, self.cfg.action_dim, -1)
+			actions = actions.unsqueeze(0).repeat(z.shape[0], z.shape[1], 1, 1)
+		
+		qs = self.model.Q(z, actions, task, return_type='min', detach=True).squeeze(-1)
 		# self.scale.update(qs[0])
 		# qs = self.scale(qs)
 
@@ -256,7 +267,7 @@ class TDMPC2(torch.nn.Module):
 			self.a_optimizer.step()
 			self.cfg.entropy_coef = self.log_alpha.exp().item()
 
-		return pi_loss.detach(), pi_grad_norm, self.log_alpha.item()
+		return pi_loss.detach(), pi_grad_norm, self.log_alpha.item() if self.cfg.autotune else 0.
 
 	@torch.no_grad()
 	def _td_target(self, next_z, reward, task):
@@ -340,7 +351,7 @@ class TDMPC2(torch.nn.Module):
 			"pi_scale": self.scale.value,
 		}).detach().mean()
 	
-	def _td_target_discrete(self, next_z, reward, task):
+	def _td_target_discrete(self, next_z, reward, task, done):
 		"""
 		Compute the TD-target from a reward and the observation at the following time step.
 
@@ -352,29 +363,41 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			torch.Tensor: TD-target.
 		"""
-		_, next_act_prob, next_log_prob = self.model.pi(next_z, task)
-		next_q_target = self.model.Q(next_z, task, return_type='min', target=True)
-		min_q_next_target = next_act_prob * (next_q_target - self.cfg.entropy_coef * next_log_prob)
+		_, _, next_act_prob, next_log_prob = self.model.pi(next_z, task)
+		actions = actions = torch.eye(self.cfg.action_dim, device=next_z.device).unsqueeze(0)
+		if next_z.dim() == 2:
+			# z (batch_size, latent_dim) -> (batch_size, action_dim, latent_dim)
+			next_z = next_z.unsqueeze(1).expand(-1, self.cfg.action_dim, -1)
+			actions = actions.repeat(next_z.shape[0], 1, 1)
+		elif next_z.dim() == 3:
+			# z (seq_len, batch_size, latent_dim) -> (seq_len, batch_size, action_dim, latent_dim)
+			next_z = next_z.unsqueeze(2).expand(-1, -1, self.cfg.action_dim, -1)
+			actions = actions.unsqueeze(0).repeat(next_z.shape[0], next_z.shape[1], 1, 1)
+		# encoded_action = encoded_action.squeeze(2)
+		qs = self.model.Q(next_z, actions, task, return_type='min', target=True).squeeze(3)
+
+		min_q_next_target = next_act_prob * (qs - self.cfg.entropy_coef * next_log_prob)
 		min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True)
 
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
-		td_targets = reward + discount * min_q_next_target
+		td_targets = reward + discount * min_q_next_target*(1-done)
 		return td_targets
-
-	def _update_discrete(self, obs, action, reward, task=None):
+ 
+	def _update_discrete(self, obs, action, reward, done, task=None):
 		# Compute targets
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
-			td_targets = self._td_target_discrete(next_z, reward, task)
+			td_targets = self._td_target_discrete(next_z, reward, task, done)
 
 		# Prepare for update
 		self.model.train()
 
 		# Latent rollout
+		# Latent rollout
 		zs = torch.empty(self.cfg.horizon+1, self.cfg.batch_size, self.cfg.latent_dim, device=self.device)
 		z = self.model.encode(obs[0], task)
 		zs[0] = z
-		consistency_loss = 0
+		consistency_loss = 0.
 		for t, (_action, _next_z) in enumerate(zip(action.unbind(0), next_z.unbind(0))):
 			z = self.model.next(z, _action, task)
 			consistency_loss = consistency_loss + F.mse_loss(z, _next_z) * self.cfg.rho**t
@@ -382,16 +405,15 @@ class TDMPC2(torch.nn.Module):
 
 		# Predictions
 		_zs = zs[:-1]
-		qs = self.model.Q(_zs, task, return_type='all')
+		qs = self.model.Q(_zs, action, task, return_type='all')
 		reward_preds = self.model.reward(_zs, action, task)
 
 		# Compute losses
-		reward_loss, value_loss = 0, 0
+		reward_loss, value_loss = 0., 0.
 		for t, (rew_pred_unbind, rew_unbind, td_targets_unbind, qs_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0), td_targets.unbind(0), qs.unbind(1))):
 			reward_loss = reward_loss + math.soft_ce(rew_pred_unbind, rew_unbind, self.cfg).mean() * self.cfg.rho**t
 			for _, qs_unbind_unbind in enumerate(qs_unbind.unbind(0)):
-				qs_unbind_unbind_act = qs_unbind_unbind.gather(1,action[t].long()).view(-1)
-				value_loss = value_loss + torch.nn.functional.mse_loss(qs_unbind_unbind_act, td_targets_unbind).mean() * self.cfg.rho**t
+				value_loss = value_loss + math.soft_ce(qs_unbind_unbind, td_targets_unbind, self.cfg).mean() * self.cfg.rho**t
 
 		consistency_loss = consistency_loss / self.cfg.horizon
 		reward_loss = reward_loss / self.cfg.horizon
@@ -424,7 +446,7 @@ class TDMPC2(torch.nn.Module):
 			"total_loss": total_loss,
 			"grad_norm": grad_norm,
 			"pi_grad_norm": pi_grad_norm,
-			"log_alpha": log_alpha if self.cfg.autotune else 0
+			"log_alpha": log_alpha
 		}).detach().mean()
 	
 	def update(self, buffer):
@@ -437,9 +459,12 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			dict: Dictionary of training statistics.
 		"""
-		obs, action, reward, task = buffer.sample()
+		if self.cfg.task_platform == 'atari':
+			obs, action, reward, done, task = buffer.sample() 
+		else:
+			obs, action, reward, task = buffer.sample() 
 		kwargs = {}
 		if task is not None:
 			kwargs["task"] = task
 		torch.compiler.cudagraph_mark_step_begin()
-		return self._update(obs, action, reward, **kwargs) if self.cfg.get('action_mode') != 'discrete' else self._update_discrete(obs, action, reward, **kwargs)
+		return self._update(obs, action, reward, **kwargs) if self.cfg.get('action_mode') != 'discrete' else self._update_discrete(obs, action, reward, done, **kwargs)

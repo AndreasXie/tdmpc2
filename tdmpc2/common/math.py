@@ -95,3 +95,12 @@ def gumbel_softmax_sample(p, temperature=1.0, dim=0):
 	gumbels = (logits + gumbels) / temperature  # ~Gumbel(logits,tau)
 	y_soft = gumbels.softmax(dim)
 	return y_soft.argmax(-1)
+
+def int_to_one_hot(x, num_classes):
+	"""
+	Converts an integer tensor to a one-hot tensor.
+	Supports batched inputs.
+	"""
+	one_hot = torch.zeros(*x.shape, num_classes, device=x.device)
+	one_hot.scatter_(-1, x.unsqueeze(-1), 1)
+	return one_hot

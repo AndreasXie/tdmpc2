@@ -18,6 +18,7 @@ from envs import make_env
 from tdmpc2 import TDMPC2
 from trainer.offline_trainer import OfflineTrainer
 from trainer.online_trainer import OnlineTrainer
+from trainer.online_trainer_term import OnlineTrainer as OnlineTrainerTerm
 from common.logger import Logger
 import dataclasses
 from typing import Any
@@ -56,7 +57,7 @@ def cfg_to_dataclass(cfg, frozen=False):
 	dataclass.get = get
 	return dataclass()
 
-@hydra.main(config_name='config_atari', config_path='.')
+@hydra.main(config_name='config4test', config_path='.')
 def train(cfg: dict):
 	"""
 	Script for training single-task / multi-task TD-MPC2 agents.
@@ -82,11 +83,14 @@ def train(cfg: dict):
 	set_seed(cfg.seed)
 	print(colored('Work dir:', 'yellow', attrs=['bold']), cfg.work_dir)
 
-	trainer_cls = OfflineTrainer if cfg.multitask else OnlineTrainer
+	if cfg.task_platform == 'atari':
+		trainer_cls = OnlineTrainerTerm
+	else:
+		trainer_cls = OfflineTrainer if cfg.multitask else OnlineTrainer
 
 	cfg = cfg_to_dataclass(cfg)
 
-	cfg.exp_name = cfg.exp_name + f'_{cfg.action_mode}_{cfg.optimizer}'
+	cfg.exp_name = cfg.exp_name + f'_{cfg.action_mode}'
 
 	trainer = trainer_cls(
 		cfg=cfg,

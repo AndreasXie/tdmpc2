@@ -1,8 +1,8 @@
 import cv2
 import gym
 import numpy as np
-from gym.wrappers import Monitor
-
+import torch
+import math
 #efficientZero v2 handling of the Atari environment
 class TimeLimit(gym.Wrapper):
     def __init__(self, env, max_episode_steps=None):
@@ -268,26 +268,16 @@ class SimpleWrapper(gym.Wrapper):
         self.thresholds = np.linspace(0, 1, self.action_range+1)
     
     def step(self, action):
-        # action = np.clip(np.round(action*self.action_range), 0, self.action_range - 1)
-        if self.action_mode == 'category':
-            action = np.clip(np.argmax(action),0, self.action_range - 1)
-        elif self.action_mode == 'continuous':
-            action = np.digitize(action, self.thresholds) - 1
-            action = np.clip(action, 0, self.action_range - 1)
-        else:#discrete
-            pass
-
-        obs, reward, done, info = self.env.step(int(action))
+        obs, reward, done, trunc, info = self.env.step(np.argmax(action).item())
 
         info['raw_reward'] = reward
         if self.clip_reward:
             reward = np.sign(reward)
 
-        return obs, reward, done, info
+        return obs, reward, 1. if done else 0., info
 
     def reset(self, **kwargs):
         obs = self.env.reset(**kwargs)
-
         return obs
 
     def close(self):
