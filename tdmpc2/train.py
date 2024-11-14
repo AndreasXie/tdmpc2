@@ -90,7 +90,7 @@ def train(cfg: dict):
 
 	cfg = cfg_to_dataclass(cfg)
 
-	cfg.exp_name = cfg.exp_name + f'_{cfg.action_mode}'
+	cfg.exp_name = cfg.exp_name
 
 	trainer = trainer_cls(
 		cfg=cfg,
