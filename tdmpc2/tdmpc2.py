@@ -106,7 +106,7 @@ class TDMPC2(torch.nn.Module):
 			action = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
 		else:
 			z = self.model.encode(obs, task)
-			action = self.model.pi(z, task)[int(not eval_mode)][0]
+			action = self.model.pi(z, task)[int(not eval_mode)]
 			if self.cfg.action == 'discrete':
 				action = action.squeeze(0) # TODO: this is a bit hacky
 		return action.cpu()
@@ -223,7 +223,7 @@ class TDMPC2(torch.nn.Module):
 
 		return a.clamp(-1, 1)
 
-	def update_pi(self, zs, task):
+	def update_pi(self, z, task):
 		"""
 		Update policy using a sequence of latent states.
 
@@ -234,24 +234,57 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			float: Loss of the policy update.
 		"""
-		_, actions, log_probs, action_probs = self.model.pi(zs, task)
-		qs = self.model.Q(zs, actions, task, return_type='avg', detach=True)
-		self.scale.update(qs[0])
+		_, _, action_probs, log_probs = self.model.pi(z, task)
+		actions = actions = torch.eye(self.cfg.action_dim, device=z.device).unsqueeze(0)
+		if z.dim() == 2:
+			# z (batch_size, latent_dim) -> (batch_size, action_dim, latent_dim)
+			z = z.unsqueeze(1).expand(-1, self.cfg.action_dim, -1)
+			actions = actions.repeat(z.shape[0], 1, 1)
+		elif z.dim() == 3:
+			# z (seq_len, batch_size, latent_dim) -> (seq_len, batch_size, action_dim, latent_dim)
+			z = z.unsqueeze(2).expand(-1, -1, self.cfg.action_dim, -1)
+			actions = actions.unsqueeze(0).repeat(z.shape[0], z.shape[1], 1, 1)
+		
+		qs = self.model.Q(z, actions, task, return_type='avg', detach=True).squeeze(-1)
+		self.scale.update(torch.sum(action_probs*qs,dim=(1,2),keepdim=True)[0])
 		qs = self.scale(qs)
 
 		# Loss is a weighted sum of Q-values
 		rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
-		if self.cfg.action == 'discrete':
-			pi_loss = ((action_probs * (self.cfg.entropy_coef * log_probs - qs)).mean(dim=(1,2)) * rho).mean()
-		else:
-			pi_loss = ((self.cfg.entropy_coef * log_probs - qs).mean(dim=(1,2)) * rho).mean()
+		pi_loss = ((action_probs*((self.cfg.entropy_coef * log_probs) - qs)).mean(dim=(1,2)) * rho).mean()
 		pi_loss.backward()
 		pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
 		self.pi_optim.step()
 		self.pi_optim.zero_grad(set_to_none=True)
+		if self.cfg.autotune:
+			alpha_loss = (action_probs.detach() * (-self.log_alpha.exp() * (log_probs + self.target_entropy).detach())).mean()
+			self.a_optimizer.zero_grad()
+			alpha_loss.backward()
+			self.a_optimizer.step()
+			self.cfg.entropy_coef = self.log_alpha.exp().item()
 
 		return pi_loss.detach(), pi_grad_norm
 
+	# @torch.no_grad()
+	# def _td_target(self, next_z, reward, task):
+	# 	"""
+	# 	Compute the TD-target from a reward and the observation at the following time step.
+
+	# 	Args:
+	# 		next_z (torch.Tensor): Latent state at the following time step.
+	# 		reward (torch.Tensor): Reward at the current time step.
+	# 		task (torch.Tensor): Task index (only used for multi-task experiments).
+
+	# 	Returns:
+	# 		torch.Tensor: TD-target.
+	# 	"""
+	# 	pi = self.model.pi(next_z, task)[1]
+	# 	if self.cfg.action == 'discrete':
+	# 		pi = pi.squeeze(2) # TODO: this is a bit hacky
+	# 	discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
+	# 	qs = self.model.Q(next_z, pi, task, return_type='min', target=True)
+	# 	return reward + discount * qs
+	
 	@torch.no_grad()
 	def _td_target(self, next_z, reward, task):
 		"""
@@ -265,12 +298,25 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			torch.Tensor: TD-target.
 		"""
-		pi = self.model.pi(next_z, task)[1]
-		if self.cfg.action == 'discrete':
-			pi = pi.squeeze(2) # TODO: this is a bit hacky
+		_, _, next_act_prob, next_log_prob = self.model.pi(next_z, task)
+		actions = torch.eye(self.cfg.action_dim, device=next_z.device).unsqueeze(0)
+		if next_z.dim() == 2:
+			# z (batch_size, latent_dim) -> (batch_size, action_dim, latent_dim)
+			next_z = next_z.unsqueeze(1).expand(-1, self.cfg.action_dim, -1)
+			actions = actions.repeat(next_z.shape[0], 1, 1)
+		elif next_z.dim() == 3:
+			# z (seq_len, batch_size, latent_dim) -> (seq_len, batch_size, action_dim, latent_dim)
+			next_z = next_z.unsqueeze(2).expand(-1, -1, self.cfg.action_dim, -1)
+			actions = actions.unsqueeze(0).repeat(next_z.shape[0], next_z.shape[1], 1, 1)
+		# encoded_action = encoded_action.squeeze(2)
+		qs = self.model.Q(next_z, actions, task, return_type='min', target=True).squeeze(3)
+
+		min_q_next_target = next_act_prob * (qs - self.cfg.entropy_coef * next_log_prob)
+		min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True)
+
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
-		qs = self.model.Q(next_z, pi, task, return_type='min', target=True)
-		return reward + discount * qs
+		td_targets = reward + discount * min_q_next_target
+		return td_targets
 
 	def _update(self, obs, action, reward, task=None):
 		# Compute targets
@@ -318,11 +364,7 @@ class TDMPC2(torch.nn.Module):
 		self.optim.step()
 		self.optim.zero_grad(set_to_none=True)
 
-		# Update policy
-		if self.cfg.action == 'continuous':
-			pi_loss, pi_grad_norm = self.update_pi(zs.detach(), task)
-		else:
-			pi_loss, pi_grad_norm = 0., 0.
+		pi_loss, pi_grad_norm = self.update_pi(zs.detach(), task)
 
 		# Update target Q-functions
 		self.model.soft_update_target_Q()
