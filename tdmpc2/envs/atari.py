@@ -318,35 +318,38 @@ def make_atari(cfg):
     episodic_life = cfg.get('episode_life')
     clip_reward = cfg.get('clip_rewards')
 
-    if "v1" in env_id:#which means the game is from the old version of gym and maybe no pixel wrapper is needed
-        env = gym.make(env_id)
+    try:
+        if "v1" in env_id:#which means the game is from the old version of gym and maybe no pixel wrapper is needed
+            env = gym.make(env_id)
 
-        env = SimpleWrapper(env, clip_reward=clip_reward, action_mode=cfg.get('action_mode'))
-    else:
-        env = gym.make(env_id + 'NoFrameskip-v4' if skip == 1 else env_id + 'Deterministic-v4') 
+            env = SimpleWrapper(env, clip_reward=clip_reward, action_mode=cfg.get('action_mode'))
+        else:
+            env = gym.make(env_id + 'NoFrameskip-v4' if skip == 1 else env_id + 'Deterministic-v4') 
 
-        # random restart
-        env = NoopResetEnv(env, noop_max=30)
+            # random restart
+            env = NoopResetEnv(env, noop_max=30)
 
-        # frame skip
-        env = MaxAndSkipEnv(env, skip=skip) 
+            # frame skip
+            env = MaxAndSkipEnv(env, skip=skip) 
 
-        # episodic trajectory
-        if episodic_life:
-            env = EpisodicLifeEnv(env)
+            # episodic trajectory
+            if episodic_life:
+                env = EpisodicLifeEnv(env)
 
-        # set seed
-        env.seed(cfg.get('seed'))
-            # reshape size and gray scale
-        env = WarpFrame(env, width=obs_shape[1], height=obs_shape[2], grayscale=gray_scale)
+            # set seed
+            env.seed(cfg.get('seed'))
+                # reshape size and gray scale
+            env = WarpFrame(env, width=obs_shape[1], height=obs_shape[2], grayscale=gray_scale)
 
-            # set max limit
-        env = TimeLimit(env, max_episode_steps=max_episode_steps)
+                # set max limit
+            env = TimeLimit(env, max_episode_steps=max_episode_steps)
 
-        # save video to given
-        # if cfg.get('save_video'):
-        #     env = Monitor(env, directory="./video", force=True)
+            # save video to given
+            # if cfg.get('save_video'):
+            #     env = Monitor(env, directory="./video", force=True)
 
-        # your wrapper
-        env = PixelWrapper(env, obs_to_string=obs_to_string, clip_reward=clip_reward, action_mode=cfg.get('action_mode'))
-    return env
+            # your wrapper
+            env = PixelWrapper(env, obs_to_string=obs_to_string, clip_reward=clip_reward, action_mode=cfg.get('action_mode'))
+        return env
+    except:
+        raise ValueError('Unknown task:', env_id)

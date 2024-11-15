@@ -31,17 +31,17 @@ class OnlineTrainer(Trainer):
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
+				torch.compiler.cudagraph_mark_step_begin()
 				action = self.agent.act(obs, t0=t==0, eval_mode=True)
 				obs, reward, done, info = self.env.step(action)
-				done = info['real_done'] if self.cfg.episode_life else done
-				ep_reward += info['raw_reward'] if self.cfg.clip_rewards else reward
+				ep_reward += reward
 				t += 1
 				if self.cfg.save_video:
 					self.logger.video.record(self.env)
 			ep_rewards.append(ep_reward)
 			ep_successes.append(info['success'])
 			if self.cfg.save_video:
-				self.logger.video.save(self._step+i)
+				self.logger.video.save(self._step)
 		return dict(
 			episode_reward=np.nanmean(ep_rewards),
 			episode_success=np.nanmean(ep_successes),
@@ -54,7 +54,8 @@ class OnlineTrainer(Trainer):
 		else:
 			obs = obs.unsqueeze(0).cpu()
 		if action is None:
-			action = torch.full_like(self.env.rand_act(), float('nan'))
+			action_val = -1 if self.cfg.action == 'discrete' else float('nan')
+			action = torch.full_like(self.env.rand_act(), action_val)
 		if reward is None:
 			reward = torch.tensor(float('nan'))
 		td = TensorDict(
@@ -97,6 +98,11 @@ class OnlineTrainer(Trainer):
 				action = self.agent.act(obs, t0=len(self._tds)==1)
 			else:
 				action = self.env.rand_act()
+			if self.cfg.action == 'discrete':
+				# exploration schedule
+				# minimum 0.01, maximum 0.05, anneal over 20k steps
+				if torch.rand(1) < 0.01 + (0.05 - 0.01) * min(1, self._step / 20000):
+					action = self.env.rand_act()
 			obs, reward, done, info = self.env.step(action)
 			self._tds.append(self.to_td(obs, action, reward))
 
