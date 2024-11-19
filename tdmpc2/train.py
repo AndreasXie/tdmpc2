@@ -56,7 +56,7 @@ def cfg_to_dataclass(cfg, frozen=False):
 	dataclass.get = get
 	return dataclass()
 
-@hydra.main(config_name='config_dmc', config_path='.')
+@hydra.main(config_name='config_atari', config_path='.')
 def train(cfg: dict):
 	"""
 	Script for training single-task / multi-task TD-MPC2 agents.
@@ -82,7 +82,7 @@ def train(cfg: dict):
 	set_seed(cfg.seed)
 	print(colored('Work dir:', 'yellow', attrs=['bold']), cfg.work_dir)
 
-	if cfg.task_platform == 'atari':
+	if cfg.has_done:
 		trainer_cls = OnlineTrainerTerm
 	else:
 		trainer_cls = OfflineTrainer if cfg.multitask else OnlineTrainer

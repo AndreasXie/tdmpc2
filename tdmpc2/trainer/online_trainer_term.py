@@ -27,12 +27,13 @@ class OnlineTrainer(Trainer):
 		"""Evaluate a TD-MPC2 agent."""
 		ep_rewards, ep_successes = [], []
 		for i in range(self.cfg.eval_episodes):
-			obs, done, ep_reward, t = self.env.reset(), False, 0, 0
+			done, ep_reward, t = False, 0, 0
+			obs = self.env.reset()
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
 				action = self.agent.act(obs, t0=t==0, eval_mode=True)
-				obs, reward, done, info = self.env.step(action)
+				obs, reward, done, trunc, info = self.env.step(action)
 				done = info['real_done'] if self.cfg.episode_life else done
 				ep_reward += info['raw_reward'] if self.cfg.clip_rewards else reward
 				t += 1
@@ -69,14 +70,15 @@ class OnlineTrainer(Trainer):
 
 	def train(self):
 		"""Train a TD-MPC2 agent."""
-		train_metrics, done, eval_next = {}, True, False
+		train_metrics, done, eval_next, real_done = {}, True, False, True
+		episode_reward = []
 		while self._step <= self.cfg.steps:
 			# Evaluate agent periodically
 			if self._step % self.cfg.eval_freq == 0:
 				eval_next = True
 
 			# Reset environment
-			if done:
+			if real_done:
 				if eval_next:
 					eval_metrics = self.eval()
 					eval_metrics.update(self.common_metrics())
@@ -85,7 +87,7 @@ class OnlineTrainer(Trainer):
 
 				if self._step > 0:
 					train_metrics.update(
-						episode_reward=torch.tensor([td['reward'] for td in self._tds[1:]]).sum(),
+						episode_reward=torch.tensor(episode_reward).sum(),
 						episode_success=info['success'],
 					)
 					train_metrics.update(self.common_metrics())
@@ -94,14 +96,17 @@ class OnlineTrainer(Trainer):
 
 				obs = self.env.reset()
 				self._tds = [self.to_td(obs)]
+				episode_reward = []
 
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
 				action = self.agent.act(obs, t0=len(self._tds)==1).squeeze(0)
 			else:
 				action = self.env.rand_act()
-			obs, reward, done, info = self.env.step(action)
+			obs, reward, done, trunc, info = self.env.step(action)
 			self._tds.append(self.to_td(obs, action, reward, done))
+			real_done = info['real_done'] if self.cfg.episode_life else done
+			episode_reward.append(info['raw_reward'] if self.cfg.clip_rewards else reward)
 
 			# Update agent
 			if self._step >= self.cfg.seed_steps:

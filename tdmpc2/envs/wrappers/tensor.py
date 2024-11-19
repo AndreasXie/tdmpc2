@@ -4,6 +4,7 @@ import gym
 import numpy as np
 import torch
 import common.math as math
+import gymnasium
 class TensorWrapper(gym.Wrapper):
 	"""
 	Wrapper for converting numpy arrays to torch tensors.
@@ -56,3 +57,46 @@ class TensorWrapper(gym.Wrapper):
 		info = defaultdict(float, info)
 		info['success'] = float(info['success'])
 		return self._obs_to_tensor(obs), torch.tensor(reward, dtype=torch.float32), torch.tensor(done, dtype=torch.float32), info
+
+class TensorWrapperAtari(gym.Wrapper):
+	"""
+	Wrapper for converting numpy arrays to torch tensors.
+	"""
+
+	def __init__(self, env, cfg=None):
+		super().__init__(env)
+		self.action_mode = cfg.get('action_mode', 'category')
+		self.action_space = env.action_space
+	
+	def rand_act(self):
+		action = torch.tensor(self.action_space.sample(), dtype=torch.int64)
+		return math.int_to_one_hot(action, self.action_space.n)
+
+	def _try_f32_tensor(self, x):
+		x = torch.Tensor(x)
+		if x.dtype == torch.float64:
+			x = x.float()
+		return x
+
+	def _obs_to_tensor(self, obs):
+		if isinstance(obs, dict):
+			for k in obs.keys():
+				obs[k] = self._try_f32_tensor(obs[k])
+		elif isinstance(obs,tuple):
+			obs = self._try_f32_tensor(obs[0])
+		else:
+			obs = self._try_f32_tensor(obs)
+
+		return obs
+
+	def reset(self, task_idx=None):
+		return self._obs_to_tensor(self.env.reset())
+
+	def step(self, action):
+		obs, reward, done, trunc, info = self.env.step(action.numpy())
+		info = defaultdict(float, info)
+		info['success'] = float(info['success'])
+		return self._obs_to_tensor(obs), torch.tensor(reward, dtype=torch.float32), torch.tensor(done, dtype=torch.float32), trunc, info
+
+	def render(self, mode='rgb_array'):
+		return self.env.render(mode)

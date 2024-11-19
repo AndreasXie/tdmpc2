@@ -5,43 +5,43 @@ defaults:
 task: Asterix
 obs: rgb
 task_platform: atari
+has_done: true
 
 #only for atari
 gray_scale: false
 obs_to_string: false
 n_skip: 4
-max_episode_steps: 200
+max_episode_steps: 4000
 episode_life: true
 clip_rewards: true
 resize: 96
-action_range: 9
-action_mode: discrete
+noop: 0
+action: discrete
 
 # evaluation
 checkpoint: ???
 eval_episodes: 10
-eval_freq: 2500
+eval_freq: 50000
 
 # training
-steps: 300_000
+steps: 150_000
 batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
-rho: 0.4
-lr: 9e-4
+rho: 0.5
+lr: 3e-4
 optimizer: adam
 enc_lr_scale: 0.3
 grad_clip_norm: 20
 tau: 0.01
 discount_denom: 5
-discount_min: 0.990
+discount_min: 0.95
 discount_max: 0.995
 buffer_size: 1_000_000
-exp_name: Asterix_discrete_SAC
+exp_name: Asterix
 data_dir: ???
-#test discrete
-autotune: true
+device: cuda:3
 
 # planning
 mpc: false
@@ -57,8 +57,9 @@ temperature: 0.5
 # actor
 log_std_min: -10
 log_std_max: 2
-entropy_coef: 2e-2
+entropy_coef: 1e-4
 target_entropy: 0.89
+autotune: false
 
 # critic
 num_bins: 101
@@ -68,24 +69,24 @@ vmax: +10
 # architecture
 model_size: ???
 num_enc_layers: 2
-enc_dim: 512
+enc_dim: 256
 num_channels: 32
 mlp_dim: 512
 latent_dim: 512
-task_dim: 1
+task_dim: 96
 num_q: 5
 dropout: 0.01
 simnorm_dim: 8
 
 # logging
-wandb_project: test_atari
+wandb_project: atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
 enable_wandb: true
 save_csv: true
 
 # misc
-save_video: true #should be solved in atari
+save_video: false #should be solved in atari
 save_agent: false
 seed: 2
 

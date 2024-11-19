@@ -206,8 +206,8 @@ def conv_atari(in_shape, num_channels, act=None):
 	4 layers of convolution with ReLU activations, followed by a linear layer.
 	"""
 	layers = [
-		ShiftAug(), PixelPreprocess(),
-		nn.Conv2d(in_shape[-1], num_channels, 7, stride=2, padding=3), nn.ReLU(inplace=False),
+		PixelPreprocess(),
+		nn.Conv2d(in_shape, num_channels, 7, stride=2, padding=3), nn.ReLU(inplace=False),#hard code for grayscale
 		nn.Conv2d(num_channels, num_channels, 5, stride=2, padding=2), nn.ReLU(inplace=False),
 		nn.Conv2d(num_channels, num_channels, 3, stride=2, padding=1), nn.ReLU(inplace=False),
 		nn.Conv2d(num_channels, num_channels, 3,stride=3, padding=1), nn.Flatten()]
@@ -223,10 +223,11 @@ def enc(cfg, out={}):
 	for k in cfg.obs_shape.keys():
 		if k == 'state':
 			out[k] = mlp(cfg.obs_shape[k][0] + cfg.task_dim, max(cfg.num_enc_layers-1, 1)*[cfg.enc_dim], cfg.latent_dim, act=SimNorm(cfg))
-		elif k == 'rgb' and cfg.task_platform != 'atari':
-			out[k] = conv(cfg.obs_shape[k], cfg.num_channels, act=SimNorm(cfg))
-		elif k == 'rgb' and cfg.task_platform == 'atari':
-			out[k] = conv_atari(cfg.obs_shape[k], cfg.num_channels, act=SimNorm(cfg))
+		elif k == 'rgb':
+			if cfg.task_platform != 'atari':
+				out[k] = conv(cfg.obs_shape[k], cfg.num_channels, act=SimNorm(cfg))
+			else:
+				out[k] = conv_atari(4 if cfg.gray_scale else 12, cfg.num_channels, act=SimNorm(cfg))
 		else:
 			raise NotImplementedError(f"Encoder for observation type {k} not implemented.")
 	return nn.ModuleDict(out)

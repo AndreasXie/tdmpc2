@@ -3,7 +3,8 @@ from collections import deque
 import gym
 import numpy as np
 import torch
-
+import cv2
+import common.math as math
 
 class PixelWrapper(gym.Wrapper):
 	"""
@@ -36,3 +37,65 @@ class PixelWrapper(gym.Wrapper):
 	def step(self, action):
 		_, reward, done, info = self.env.step(action)
 		return self._get_obs(), reward, done, info
+
+
+class PixelWrapperAtari(gym.Wrapper):
+    def __init__(self, cfg, env):
+        """Cosine Consistency loss function: similarity loss
+        Parameters
+        ----------
+        obs_to_string: bool. Convert the observation to jpeg string if True, in order to save memory usage.
+        """
+        super().__init__(env)
+        self.obs_to_string = cfg.get('obs_to_string')
+        self.clip_reward = cfg.get('clip_reward')
+        self.action_range = env.action_space.n
+        self.transpose = not cfg.gray_scale#if no gray sacle, dim 4,84,84,3 need to be transpose
+
+    def format_obs(self, obs):
+        if self.transpose:
+             obs = obs.permute(0, 3, 1, 2).reshape(12, 84, 84)#4,84,84,3 => 12,84,84
+        if self.obs_to_string:
+            # convert obs to jpeg string for lower memory usage
+            obs = obs.astype(np.uint8)
+            obs = arr_to_str(obs)
+        return obs
+
+    def step(self, action):
+        obs, reward, done, trunc, info = self.env.step(torch.argmax(action))
+
+        obs = self.format_obs(obs)
+
+        info['raw_reward'] = reward
+        if self.clip_reward:
+            reward = np.sign(reward)
+
+        return obs, reward, done, trunc, info
+
+    def rand_act(self):
+        action = torch.tensor(self.action_space.sample(), dtype=torch.int64)
+        return math.int_to_one_hot(action, self.action_space.n)
+        
+    def reset(self, **kwargs):
+        obs = self.env.reset(**kwargs)
+        # format observation
+        obs = self.format_obs(obs)
+
+        return obs
+
+    def close(self):
+        return self.env.close()
+    
+    def render(self, mode='rgb_array'):
+        return self.env.render(mode)
+    
+def arr_to_str(arr):
+    """
+    To reduce memory usage, we choose to store the jpeg strings of image instead of the numpy array in the buffer.
+    This function encodes the observation numpy arr to the jpeg strings.
+    :param arr:
+    :return:
+    """
+    img_str = cv2.imencode('.jpg', arr)[1].tobytes()
+
+    return img_str

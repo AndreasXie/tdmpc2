@@ -17,7 +17,7 @@ class TDMPC2(torch.nn.Module):
 	def __init__(self, cfg):
 		super().__init__()
 		self.cfg = cfg
-		self.device = torch.device('cuda:0')
+		self.device = torch.device(cfg.get('device', 'cuda:0'))
 		self.model = WorldModel(cfg).to(self.device)
 		self.optim = torch.optim.Adam([
 			{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
@@ -32,7 +32,7 @@ class TDMPC2(torch.nn.Module):
 		self.scale = RunningScale(cfg)
 		self.cfg.iterations += 2*int(cfg.action_dim >= 20) # Heuristic for large action spaces
 		self.discount = torch.tensor(
-			[self._get_discount(ep_len) for ep_len in cfg.episode_lengths], device='cuda:0'
+			[self._get_discount(ep_len) for ep_len in cfg.episode_lengths], device=self.device
 		) if self.cfg.multitask else self._get_discount(cfg.episode_length)
 		self._prev_mean = torch.nn.Buffer(torch.zeros(self.cfg.horizon, self.cfg.action_dim, device=self.device))
 		if cfg.compile:
@@ -264,26 +264,6 @@ class TDMPC2(torch.nn.Module):
 			self.cfg.entropy_coef = self.log_alpha.exp().item()
 
 		return pi_loss.detach(), pi_grad_norm
-
-	# @torch.no_grad()
-	# def _td_target(self, next_z, reward, task):
-	# 	"""
-	# 	Compute the TD-target from a reward and the observation at the following time step.
-
-	# 	Args:
-	# 		next_z (torch.Tensor): Latent state at the following time step.
-	# 		reward (torch.Tensor): Reward at the current time step.
-	# 		task (torch.Tensor): Task index (only used for multi-task experiments).
-
-	# 	Returns:
-	# 		torch.Tensor: TD-target.
-	# 	"""
-	# 	pi = self.model.pi(next_z, task)[1]
-	# 	if self.cfg.action == 'discrete':
-	# 		pi = pi.squeeze(2) # TODO: this is a bit hacky
-	# 	discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
-	# 	qs = self.model.Q(next_z, pi, task, return_type='min', target=True)
-	# 	return reward + discount * qs
 	
 	@torch.no_grad()
 	def _td_target(self, next_z, reward, task):
@@ -317,12 +297,45 @@ class TDMPC2(torch.nn.Module):
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		td_targets = reward + discount * min_q_next_target
 		return td_targets
+	
+	@torch.no_grad()
+	def _td_target_term(self, next_z, reward, done, task):
+		"""
+		Compute the TD-target from a reward and the observation at the following time step.
 
-	def _update(self, obs, action, reward, task=None):
+		Args:
+			next_z (torch.Tensor): Latent state at the following time step.
+			reward (torch.Tensor): Reward at the current time step.
+			task (torch.Tensor): Task index (only used for multi-task experiments).
+
+		Returns:
+			torch.Tensor: TD-target.
+		"""
+		_, _, next_act_prob, next_log_prob = self.model.pi(next_z, task)
+		actions = torch.eye(self.cfg.action_dim, device=next_z.device).unsqueeze(0)
+		if next_z.dim() == 2:
+			# z (batch_size, latent_dim) -> (batch_size, action_dim, latent_dim)
+			next_z = next_z.unsqueeze(1).expand(-1, self.cfg.action_dim, -1)
+			actions = actions.repeat(next_z.shape[0], 1, 1)
+		elif next_z.dim() == 3:
+			# z (seq_len, batch_size, latent_dim) -> (seq_len, batch_size, action_dim, latent_dim)
+			next_z = next_z.unsqueeze(2).expand(-1, -1, self.cfg.action_dim, -1)
+			actions = actions.unsqueeze(0).repeat(next_z.shape[0], next_z.shape[1], 1, 1)
+		# encoded_action = encoded_action.squeeze(2)
+		qs = self.model.Q(next_z, actions, task, return_type='min', target=True).squeeze(3)
+
+		min_q_next_target = next_act_prob * (qs - self.cfg.entropy_coef * next_log_prob)
+		min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True)
+
+		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
+		td_targets = reward + discount * min_q_next_target * (1 - done)
+		return td_targets
+
+	def _update(self, obs, action, reward, task=None, done = None):
 		# Compute targets
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
-			td_targets = self._td_target(next_z, reward, task)
+			td_targets = self._td_target(next_z, reward, task) if not self.cfg.has_done else self._td_target_term(next_z, reward, done, task)
 
 		# Prepare for update
 		self.model.train()
@@ -392,9 +405,18 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			dict: Dictionary of training statistics.
 		"""
-		obs, action, reward, task = buffer.sample()
+		done = None
+		if self.cfg.has_done:
+			obs, action, reward, done, task = buffer.sample()
+		else:
+			obs, action, reward, task = buffer.sample()
+		
 		kwargs = {}
 		if task is not None:
 			kwargs["task"] = task
+
+		if done is not None:
+			kwargs["done"] = done
+			
 		torch.compiler.cudagraph_mark_step_begin()
 		return self._update(obs, action, reward, **kwargs)

@@ -12,7 +12,7 @@ class Buffer():
 
 	def __init__(self, cfg):
 		self.cfg = cfg
-		self._device = torch.device('cuda:0')
+		self._device = torch.device(cfg.get('device', 'cuda:0'))
 		self._capacity = min(cfg.buffer_size, cfg.steps)
 		self._sampler = SliceSampler(
 			num_slices=self.cfg.batch_size,
@@ -59,7 +59,7 @@ class Buffer():
 		print(f'Storage required: {total_bytes/1e9:.2f} GB')
 		# Heuristic: decide whether to use CUDA or CPU memory
 		storage_device = 'cuda:0' if 2.5*total_bytes < mem_free else 'cpu'
-		print(f'Using {storage_device.upper()} memory for storage.')
+		print(f'Using {storage_device} memory for storage.')
 		self._storage_device = torch.device(storage_device)
 		return self._reserve_buffer(
 			LazyTensorStorage(self._capacity, device=self._storage_device)
@@ -106,4 +106,4 @@ class Buffer():
 	def sample(self):
 		"""Sample a batch of subsequences from the buffer."""
 		td = self._buffer.sample().view(-1, self.cfg.horizon+1).permute(1, 0)
-		return self._prepare_batch(td) if self.cfg.task_platform != 'atari' else self._prepare_batch_atari(td)
+		return self._prepare_batch_atari(td) if self.cfg.has_done else self._prepare_batch(td)
