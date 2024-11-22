@@ -7,6 +7,7 @@ obs: state
 action: discrete
 task_platform: dmcontrol
 max_episode_steps: ???
+has_done: false
 
 # evaluation
 checkpoint: ???
@@ -75,8 +76,8 @@ save_csv: true
 
 # misc
 save_video: true
-save_agent: true
-seed: 1
+save_agent: false
+seed: 4
 
 # convenience
 work_dir: ???
