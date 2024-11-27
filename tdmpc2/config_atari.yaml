@@ -41,7 +41,7 @@ discount_max: 0.995
 buffer_size: 1_000_000
 exp_name: Asterix
 data_dir: ???
-device: cuda:3
+device: cuda:0
 
 # planning
 mpc: true
@@ -88,7 +88,7 @@ save_csv: false
 # misc
 save_video: false #should be solved in atari
 save_agent: false
-seed: 2
+seed: 1
 
 # convenience
 work_dir: ???

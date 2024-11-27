@@ -3,7 +3,6 @@ from collections import deque
 import gym
 import numpy as np
 import torch
-import cv2
 import common.math as math
 
 class PixelWrapper(gym.Wrapper):
@@ -47,7 +46,6 @@ class PixelWrapperAtari(gym.Wrapper):
         obs_to_string: bool. Convert the observation to jpeg string if True, in order to save memory usage.
         """
         super().__init__(env)
-        self.obs_to_string = cfg.get('obs_to_string')
         self.clip_reward = cfg.get('clip_reward')
         self.action_range = env.action_space.n
         self.transpose = not cfg.gray_scale#if no gray sacle, dim 4,84,84,3 need to be transpose
@@ -55,10 +53,6 @@ class PixelWrapperAtari(gym.Wrapper):
     def format_obs(self, obs):
         if self.transpose:
              obs = obs.permute(0, 3, 1, 2).reshape(12, 84, 84)#4,84,84,3 => 12,84,84
-        if self.obs_to_string:
-            # convert obs to jpeg string for lower memory usage
-            obs = obs.astype(np.uint8)
-            obs = arr_to_str(obs)
         return obs
 
     def step(self, action):
@@ -88,14 +82,3 @@ class PixelWrapperAtari(gym.Wrapper):
     
     def render(self, mode='rgb_array'):
         return self.env.render(mode)
-    
-def arr_to_str(arr):
-    """
-    To reduce memory usage, we choose to store the jpeg strings of image instead of the numpy array in the buffer.
-    This function encodes the observation numpy arr to the jpeg strings.
-    :param arr:
-    :return:
-    """
-    img_str = cv2.imencode('.jpg', arr)[1].tobytes()
-
-    return img_str
