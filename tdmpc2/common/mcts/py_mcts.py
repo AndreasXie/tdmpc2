@@ -7,7 +7,7 @@ import math
 import torch.nn.functional as F
 from torch.distributions import TransformedDistribution, Normal, constraints
 from torch.distributions import transforms
-from base import MCTS
+from .base import MCTS
 
 device = "cpu"
 # 定义 softmax 函数

@@ -335,7 +335,7 @@ def run_one_episode(env_cfg):
         print(f"  Info: {info}")
         print(f"  Observation Shape: {observation.shape if isinstance(observation, np.ndarray) else type(observation)}")
         
-        a = env.render('rgb_array')
+        # a = env.render('rgb_array')
         # End the loop if the episode is terminated or truncated
         if info['lives']==0:
             info['episode']

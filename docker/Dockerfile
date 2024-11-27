@@ -69,6 +69,8 @@ RUN pip install gym==0.21.0
 RUN pip install gymnasium==0.28.1
 RUN pip install gymnasium[atari]
 RUN pip install gymnasium[box2d]
+RUN pip install gymnasium[accept-rom-license]
+RUN pip install opencv-python
 RUN pip install stable-baselines3==2.0.0
 
 # metaworld
