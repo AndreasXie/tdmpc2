@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: yx-pvc  # Name of the PVC
+spec:
+  accessModes:
+    - ReadWriteMany  # Access mode: RWO, ROX, RWX
+  resources:
+    requests:
+      storage: 200Gi  # Requested storage size
+  storageClassName: rook-cephfs  # Optional: specify a storage class
