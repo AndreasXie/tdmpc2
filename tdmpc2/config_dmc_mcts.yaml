@@ -1,0 +1,120 @@
+defaults:
+    - override hydra/launcher: submitit_local
+
+# environment
+task: cartpole-swingup
+obs: state
+action: discrete
+task_platform: dmcontrol
+max_episode_steps: ???
+has_done: false
+
+# evaluation
+checkpoint: ???
+eval_episodes: 10
+eval_freq: 5000
+
+# training
+steps: 10_000_000
+batch_size: 256
+reward_coef: 0.1
+value_coef: 0.1
+consistency_coef: 20
+rho: 0.5
+lr: 3e-4
+enc_lr_scale: 0.3
+grad_clip_norm: 20
+tau: 0.01
+discount_denom: 5
+discount_min: 0.95
+discount_max: 0.995
+buffer_size: 1_000_000
+exp_name: without_mpc_sac_like
+data_dir: ???
+device: cuda:1
+
+# planning
+mpc: true
+iterations: 6
+num_samples: 512
+num_elites: 64
+num_pi_trajs: 24
+horizon: 3
+min_std: 0.05
+max_std: 2
+temperature: 0.5
+
+# actor
+log_std_min: -10
+log_std_max: 2
+entropy_coef: 1e-4
+autotune: false
+
+# critic
+num_bins: 101
+vmin: -10
+vmax: +10
+
+# architecture
+model_size: ???
+num_enc_layers: 2
+enc_dim: 256
+num_channels: 32
+mlp_dim: 512
+latent_dim: 512
+task_dim: 96
+num_q: 5
+dropout: 0.01
+simnorm_dim: 8
+
+# logging
+wandb_project: dmc_discrete
+wandb_entity: yux076-ucsd
+wandb_silent: false
+enable_wandb: false
+save_csv: true
+
+# misc
+save_video: true
+save_agent: false
+seed: 4
+
+# convenience
+work_dir: ???
+task_title: ???
+multitask: ???
+tasks: ???
+obs_shape: ???
+action_dim: ???
+episode_length: ???
+obs_shapes: ???
+action_dims: ???
+episode_lengths: ???
+seed_steps: ???
+bin_size: ???
+
+# speedups
+compile: False
+
+# mcts
+# mcts
+mcts:
+  num_simulations: 50           # 模拟次数
+  num_top_actions: 2           # 顶级动作数量
+  c_visit: 1.0                  # 访问计数常数
+  c_scale: 1.0                  # 缩放常数
+  c_base: 19652                 # 基础常数
+  c_init: 1.25                  # 初始化常数
+  dirichlet_alpha: 0.3          # Dirichlet 分布的 alpha 参数
+  explore_frac: 0.25            # 探索比例
+  discount: 0.99                # 折扣因子
+  value_minmax_delta: 1e-6      # 最小最大值更新的 delta
+  value_support: [-1, 1]        # 值的支持范围
+  reward_support: [-1, 1]       # 奖励的支持范围
+  value_prefix: true            # 是否使用值前缀
+  hidden_state_size: 128        # 隐藏状态大小
+  hidden_horizon_len: 20        # 隐藏状态的时间步长
+  mpc_horizon: 10               # MPC 的时间步长
+  env: dmcontrol                 # 环境实例
+  vis: [log, text, graph]       # 可视化选项
+  std_magnification: 1.0        # 标准差放大倍数

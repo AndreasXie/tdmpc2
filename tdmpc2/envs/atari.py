@@ -1,4 +1,3 @@
-import cv2
 import gymnasium as gym
 import numpy as np
 
@@ -278,7 +277,7 @@ def make_atari(cfg):
     noop = cfg.get('noop')
 
     try:
-        if "v1" in env_id:#which means the game is from the old version of gym and maybe no pixel wrapper is needed
+        if "v1" in env_id:#which means the game is from the classic tasks of gym like cartpole and  no pixel wrapper is needed
             env = gym.make(env_id)
             env = SimpleWrapper(cfg,env)
         else:
@@ -299,6 +298,7 @@ def make_atari(cfg):
     except:
         raise ValueError('Unknown task:', env_id)
     
+#Just for tesing
 def run_one_episode(env_cfg):
     """
     Run one episode in the Atari environment with random actions and print step-by-step information.
