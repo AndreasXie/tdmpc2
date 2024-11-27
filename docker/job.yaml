@@ -1,0 +1,90 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{name}}
+  labels:
+    nautilus.io/rl: "true"
+spec:
+  template:
+    spec:
+      containers:
+      - name: {{name}}
+        image: {{image}}
+        workingDir: /root
+        imagePullPolicy: Always
+        command: ["/bin/bash"]
+        args: ["-c", ">- cp -r /{{pvc}}/.ssh /root && cp -r /{{pvc}}/.isaacgym /root && cp -r /{{pvc}}/isaacgymenvs /root && cd /root/isaacgymenvs && pip install --user -e . && pip install --user rl-games && pip install --user opencv-python==4.5.5.64 && pip install --user torchvision==0.17 && cd /root && git clone git@github.com:{{user}}/{{repo}}.git && cd {{repo}} && wandb login {{wandb_key}} && {{cmd}}"]
+        resources:
+          requests:
+            cpu: "{{cpu}}"
+            memory: {{mem}}Gi
+            ephemeral-storage: 24Gi
+            nvidia.com/gpu: "{{gpu}}"
+          limits:
+            cpu: "{{cpu}}"
+            memory: {{mem}}Gi
+            ephemeral-storage: 24Gi
+            nvidia.com/gpu: "{{gpu}}"
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+          - mountPath: /{{pvc}}
+            name: {{pvc}}
+      restartPolicy: Never
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        - name: {{pvc}}
+          persistentVolumeClaim:
+            claimName: {{pvc}}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: nautilus.io/group
+                    operator: {{haosu}}
+                    values:
+                      - haosu
+                  - key: nvidia.com/gpu.product
+                    operator: In
+                    values:
+                    - NVIDIA-GeForce-RTX-4090
+                    - NVIDIA-GeForce-RTX-3090
+                    - NVIDIA-RTX-A5000
+                    - NVIDIA-GeForce-RTX-2080-Ti
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                    - nautilus01.hsrn.nyu.edu
+                    - hcc-nrp-shor-c5226.unl.edu
+                    - k8s-3090-02.clemson.edu
+                  # - key: kubernetes.io/hostname
+                  #   operator: In
+                  #   values:
+                  #   - suncave-1
+                  #   - suncave-2
+                  #   - suncave-3
+                  #   - suncave-4
+                  #   - suncave-5
+                  #   - suncave-6
+                  #   - suncave-7
+                  #   - suncave-8
+                  #   - suncave-9
+                  #   - suncave-10
+                  #   - suncave-11
+                  #   - suncave-12
+                  #   - suncave-13
+                  #   - suncave-14
+                  #   - suncave-15
+                  #   - suncave-16
+                  #   - suncave-17
+                  #   - suncave-18
+                  #   - suncave-19
+                  #   - suncave-20
+                  #   - suncave-21
+                  #   - suncave-22
+                  #   - suncave-23
+                  #   - suncave-24
+  backoffLimit: 0

@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nh-login  # use your own initials
+spec:
+  containers:
+  - name: nh-login
+    image: nicklashansen/nv:0.1.5  # name of your image
+    workingDir: /root  # name of your volume
+    imagePullPolicy: Always
+    args: ["sleep", "infinity"]
+    volumeMounts:
+      - mountPath: /dev/shm
+        name: dshm
+      - mountPath: /nh-fast-vol3  # name of your volume
+        name: nh-fast-vol3  # name of your volume
+    resources:
+      requests:
+        cpu: 2
+        memory: 16Gi
+        # nvidia.com/gpu: 1
+      limits:
+        cpu: 2
+        memory: 16Gi
+        # nvidia.com/gpu: 1
+  restartPolicy: Never
+  volumes:
+    - name: dshm
+      emptyDir:
+        medium: Memory
+    - name: nh-fast-vol3  # name of your volume
+      persistentVolumeClaim:
+        claimName: nh-fast-vol3  # name of your volume
+  affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  # - key: nvidia.com/gpu.product
+                  #   operator: In
+                  #   values:
+                  #   - NVIDIA-GeForce-RTX-3090
+                  #   - NVIDIA-GeForce-RTX-4090
+                  #   - NVIDIA-RTX-A6000
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - k8s-gpu-3.ucr.edu
+                      - gpn-fiona.usd.edu
+                  # - key: kubernetes.io/hostname
+                  #   operator: In
+                  #   values:
+                  #   - suncave-1
+                  #   - suncave-2
+                  #   - suncave-3
+                  #   - suncave-4
+                  #   - suncave-5
+                  #   - suncave-6
+                  #   - suncave-7
+                  #   - suncave-8
+                  #   - suncave-9
+                  #   - suncave-10
+                  #   - suncave-11
+                  #   - suncave-12
+                  #   - suncave-13
+                  #   - suncave-14
+                  #   - suncave-15
+                  #   - suncave-16
+                  #   - suncave-17
+                  #   - suncave-18
+                  #   - suncave-19
+                  #   - suncave-20
+                  #   - suncave-21
+                  #   - suncave-22
+                  #   - suncave-23
+                  #   - suncave-24
