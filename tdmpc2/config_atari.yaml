@@ -9,7 +9,7 @@ has_done: true
 
 #only for atari
 gray_scale: false
-obs_to_string: false
+obs_to_string: true
 n_skip: 4
 max_episode_steps: 4000
 episode_life: true
@@ -21,7 +21,7 @@ action: discrete
 # evaluation
 checkpoint: ???
 eval_episodes: 10
-eval_freq: 50000
+eval_freq: 5000
 
 # training
 steps: 150_000
@@ -82,7 +82,7 @@ simnorm_dim: 8
 wandb_project: atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: false
+enable_wandb: true
 save_csv: false
 
 # misc
