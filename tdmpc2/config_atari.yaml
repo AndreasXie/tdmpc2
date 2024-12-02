@@ -11,7 +11,7 @@ has_done: true
 gray_scale: false
 obs_to_string: true
 n_skip: 4
-max_episode_steps: 200
+max_episode_steps: 4000
 episode_life: true
 clip_rewards: true
 resize: 96
@@ -82,7 +82,7 @@ simnorm_dim: 8
 wandb_project: atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: false
+enable_wandb: true
 save_csv: false
 
 # misc
