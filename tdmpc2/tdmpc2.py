@@ -108,7 +108,7 @@ class TDMPC2(torch.nn.Module):
 			action = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
 		else:
 			z = self.model.encode(obs, task)
-			action = self.model.pi(z, task)[int(not eval_mode)]
+			action = self.model.pi(z, task)[0]
 			if self.cfg.action == 'discrete':
 				action = action.squeeze(0) # TODO: this is a bit hacky
 		return action.cpu()
