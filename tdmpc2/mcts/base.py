@@ -2,7 +2,25 @@ import copy
 import torch
 from torch.cuda.amp import autocast as autocast
 import numpy as np
-from ..math import two_hot_inv
+import torch.nn.functional as F
+
+def symexp(x):
+	"""
+	Symmetric exponential function.
+	Adapted from https://github.com/danijar/dreamerv3.
+	"""
+	return torch.sign(x) * (torch.exp(torch.abs(x)) - 1)
+
+def two_hot_inv(x, cfg):
+	"""Converts a batch of soft two-hot encoded vectors to scalars."""
+	if cfg.num_bins == 0:
+		return x
+	elif cfg.num_bins == 1:
+		return symexp(x)
+	dreg_bins = torch.linspace(cfg.vmin, cfg.vmax, cfg.num_bins, device=x.device, dtype=x.dtype)
+	x = F.softmax(x, dim=-1)
+	x = torch.sum(x * dreg_bins, dim=-1, keepdim=True)
+	return symexp(x)
 
 class MCTS:
     def __init__(self, cfg):
@@ -38,14 +56,14 @@ class MCTS:
     def search(self, model, batch_size, root_states, root_values, root_policy_logits, **kwargs):
         raise NotImplementedError()
 
-    def sample_mpc_actions(self, policy):
-        is_continuous = (self.env in ['DMC', 'Gym'])
-        if is_continuous:
-            action_dim = policy.shape[-1] // 2
-            mean = policy[:, :action_dim]
-            return mean
-        else:
-            return policy.argmax(dim=-1).unsqueeze(1)
+    # def sample_mpc_actions(self, policy):
+    #     is_continuous = (self.env in ['DMC', 'Gym'])
+    #     if is_continuous:
+    #         action_dim = policy.shape[-1] // 2
+    #         mean = policy[:, :action_dim]
+    #         return mean
+    #     else:
+    #         return policy.argmax(dim=-1).unsqueeze(1)
 
     def update_statistics(self, **kwargs):
         if kwargs.get('prediction'):
@@ -60,7 +78,7 @@ class MCTS:
                 with torch.no_grad():
                     with autocast():
                         states = model.next(states, last_actions, task)
-                        pred_value_prefixes = two_hot_inv(model.reward(states, last_actions, task), self.cfg)
+                        pred_value_prefixes = model.reward(states, last_actions, task)
                         next_values = model.Q(states, last_actions, task, return_type='avg')
                         next_logits = model.pi(states,task)[2]
                 # last_actions = self.sample_mpc_actions(next_logits)
