@@ -286,8 +286,8 @@ class PyMCTS(MCTS):
         search_root_values = np.asarray([root.get_value() for root in roots])
         search_root_policies = []
         for root, value_min_max in zip(roots, value_min_max_lst):
-            improved_policy = root.get_improved_policy(self.get_transformed_completed_Qs(root, value_min_max))
-            search_root_policies.append(improved_policy)
+            policy = self.select_action(root,value_min_max.normalize,1)
+            search_root_policies.append(policy)
         search_root_policies = np.asarray(search_root_policies)
         search_best_actions = np.asarray([root.selected_children_idx[0] for root in roots])
 
@@ -341,15 +341,14 @@ class PyMCTS(MCTS):
             ## 对于非根节点，按另一种方式计算分数
             # 计算改进后的策略
             policy = node.get_policy()
-            Q_value = node.get_normalized_Q(value_min_max)
+            Q_value = node.get_normalized_Q(value_min_max.normalize)
             Nb = node.get_children_visit_sum()
             Na = node.get_children_visits()
-
+            #Q_value act_num, policy act_num, Nb 1, Na act_num,
             children_scores = Q_value + policy*(np.sqrt(Nb)/(Na+1))*(self.c_base + np.log((Nb + self.c_scale + 1)/self.c_scale))
             
             action = np.argmax(children_scores)
-            if action == 4:
-                a = 1
+
             self.log('action select at non-root node: \n'
                      'improved policy -> \t\t {} \n'
                      'children visits -> \t\t {} \n'
@@ -365,8 +364,14 @@ class PyMCTS(MCTS):
         for i in range(path_len - 1, -1, -1):
             node:Node = search_path[i]
             node.estimated_value_lst.append(value)
+            
+            if i == path_len-1 and i != 0:# boundary node
+                parent:Node = search_path[i-1]
+                G = node.get_reward() + node.discount*value
+                parent.Q_value[node.action] = (node.visit_count*node.Q_value[node.action] + G) / (node.visit_count+1)
+                value_min_max.update(parent.Q_value[node.action])
 
-            if i != 0:
+            if i != path_len-1 and i != 0:#non boundary and non root
                 parent:Node = search_path[i-1]
                 parent.Q_value[node.action] = (node.visit_count*node.Q_value[node.action] + parent.get_qsa(node.action)) / (node.visit_count+1)
                 value_min_max.update(parent.Q_value[node.action])
@@ -383,3 +388,129 @@ class PyMCTS(MCTS):
                 min_visit_count = visit_count
         assert action >= 0
         return action
+
+# 简单环境的定义
+class SimpleEnv:
+    def __init__(self, state_dim=4, num_actions=5):
+        self.state_dim = state_dim
+        self.num_actions = num_actions
+        self.reset()
+        self.counter = 0
+
+    def reset(self, batch_size=1):
+        # 环境重置，并返回初始state
+        # 假设state是一个简单的向量，这里随机初始化
+        self.current_states = torch.randn(batch_size, self.state_dim)
+        return self.current_states
+
+    def step(self, actions):
+        # 给定actions，返回下一时刻状态。
+        # 对于简单测试环境，我们随机生成下一状态，不关心action影响
+        batch_size = actions.shape[0]
+        next_states = torch.ones(batch_size, self.state_dim)*self.counter
+        self.counter += 1
+        self.current_states = next_states
+        return next_states
+
+# 简单模型的定义
+class SimpleModel(nn.Module):
+    def __init__(self, state_dim=4, num_actions=5):
+        super(SimpleModel, self).__init__()
+        self.state_dim = state_dim
+        self.num_actions = num_actions
+
+        # 简单的线性层，仅用于展示结构，不作实际含义
+        self.fc_state = nn.Linear(state_dim, state_dim)
+        self.fc_reward = nn.Linear(state_dim, 1)
+        self.fc_value = nn.Linear(state_dim, 1)
+        self.fc_policy = nn.Linear(state_dim, num_actions)
+
+    def forward(self, states):
+        # 通用前向：这里对state简单变换，用于模拟一些网络计算
+        return self.fc_state(states)
+
+    def next(self, states, actions, task=None):
+        # 用于在 MCTS 中预测下一状态（隐状态）
+        # 简单地将state过一遍fc_state，并加一些噪声
+        next_states = self(states) + 1.*torch.ones_like(states)
+        return next_states
+
+    def reward(self, states, actions, task=None):
+        # 返回预测的奖励，这里返回随机值（或根据state计算的值）
+        # 这里将状态过fc_reward生成一个标量奖励
+        r = torch.Tensor(states[:,0]+10.*actions)
+        return r
+
+    def Q(self, states, actions, task=None, return_type='avg'):
+        # 返回Q值，这里简单地根据state计算一个值即可
+        # 对于连续/离散不做区分，简单返回一个标量即可
+        Q = torch.Tensor(states[:,0]+10.*actions)
+        return Q
+
+    def pi(self, states, task=None):
+        # 返回策略的相关信息，这里返回 (mean, std, logits) 三元组
+        # 对于离散动作，假定mean=logits, std=恒定张量。为了兼容原有代码的pi返回结构：
+        # mean, std只在连续环境用，这里可以简单返回0张量
+        # logits = self.fc_policy(states)
+        logits = torch.Tensor([[i for i in range(self.num_actions)]])
+        return torch.zeros_like(logits), torch.ones_like(logits)*0.1, logits
+
+#########################################
+# 下面是一个简单的测试用例
+if __name__ == "__main__":
+    # 创建简单环境和模型
+    env = SimpleEnv(state_dim=4, num_actions=5)
+    model = SimpleModel(state_dim=4, num_actions=5)
+    
+    class CFG:
+        num_actions = 5
+        num_simulations = 10
+        num_top_actions = 5
+        c_visit = 1.0
+        c_scale = 1.0
+        c_base = 1.0
+        c_init = 1.0
+        dirichlet_alpha = 0.3
+        explore_frac = 0.25
+        discount = 0.99
+        value_minmax_delta = 0.01
+        value_support = True
+        reward_support = True
+        value_prefix = True
+        mpc_horizon = 3
+        env = 'SimpleEnv'   # 仅用于标识用途
+        vis = None
+        std_magnification = 1.0
+
+    # 创建一个PyMCTS对象
+    from base import MCTS
+    # 如果 base.py 不存在，可以直接使用MCTS基类上面定义好的MCTS类即可。
+    # MCTS类已经在上面代码中定义，因此这里无需重复定义。
+
+    from math_mcts import MinMaxStats, softmax
+    # PyMCTS类已在上述代码中定义。
+
+    cfg = CFG()
+    mcts = PyMCTS(cfg)
+
+    # 假设batch_size=1
+    batch_size = 1
+    root_states = env.reset(batch_size=batch_size)
+    # root_values 和 root_policy_logits 可以通过模型获得
+    root_values = model.Q(root_states, torch.zeros(batch_size,1).long())
+    _, _, root_policy_logits = model.pi(root_states)
+
+    # 进行MCTS搜索测试
+    search_root_values, search_root_policies, search_best_actions, mcts_info = \
+        mcts.search(model, 
+                    batch_size, 
+                    root_states, 
+                    root_values.detach().cpu().numpy(), 
+                    root_policy_logits.detach().cpu().numpy(),
+                    task=None,
+                    verbose=4)
+
+    print("MCTS Search Results:")
+    print("Root Values: ", search_root_values)
+    print("Root Policies: ", search_root_policies)
+    print("Best Actions: ", search_best_actions)
