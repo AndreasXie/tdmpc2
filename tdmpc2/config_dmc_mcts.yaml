@@ -29,7 +29,7 @@ discount_denom: 5
 discount_min: 0.95
 discount_max: 0.995
 buffer_size: 1_000_000
-exp_name: without_mpc_sac_like
+exp_name: mcts_muzero
 data_dir: ???
 device: cuda:1
 
@@ -71,11 +71,11 @@ simnorm_dim: 8
 wandb_project: dmc_discrete
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: false
+enable_wandb: true
 save_csv: true
 
 # misc
-save_video: true
+save_video: false
 save_agent: false
 seed: 4
 

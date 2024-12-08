@@ -39,7 +39,7 @@ discount_denom: 5
 discount_min: 0.95
 discount_max: 0.995
 buffer_size: 1_000_000
-exp_name: Asterix
+exp_name: mcts_muzero
 data_dir: ???
 device: cuda:1
 
@@ -82,7 +82,7 @@ simnorm_dim: 8
 wandb_project: atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: false
+enable_wandb: true
 save_csv: false
 
 # misc
@@ -117,3 +117,5 @@ vis: [log]       # 可视化选项
 std_magnification: 1.0        # 标准差放大倍数
 value_support: [-1, 1]        # 值的支持范围
 reward_support: [-1, 1]       # 奖励的支持范围
+dirichlet_alpha: 0.3          # Dirichlet 分布的 alpha 参数
+explore_frac: 0.25            # 探索比例

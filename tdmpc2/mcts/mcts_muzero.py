@@ -159,6 +159,8 @@ class PyMCTS(MCTS):
         super().__init__(cfg)
         self.c_1 = cfg.c_1
         self.c_2 = cfg.c_2
+        self.dirichlet_alpha = cfg.dirichlet_alpha
+        self.explore_frac = cfg.explore_frac
 
     # def expectation(self, values, visits):
 
@@ -168,13 +170,20 @@ class PyMCTS(MCTS):
         roots = [Node(prior=1) for _ in range(batch_size)]          # 为批次设置根节点
 
         #initial inference
-        _, policy, logits, _ = model.pi(state, task) # action probs
+        _, policy, _logits, _ = model.pi(state, task) # action probs
         
         root_states = state.detach().cpu()            # 根节点的状态
-        root_policy_logits = logits.detach().cpu()  # 根节点的策略
+        root_policy_logits = _logits.detach().cpu()  # 根节点的策略
+
+        dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.dirichlet_alpha]*self.num_actions))
 
         # 扩展根节点并更新统计信息
         for root, state, logit in zip(roots, root_states, root_policy_logits):
+            # noise = np.random.dirichlet([self.dirichlet_alpha] * self.num_actions)
+            noise = dirichlet_noise.sample().cpu()
+            for action in range(self.num_actions):
+                logit[action] = logit[action] * (1 - self.explore_frac) + noise[action] * self.explore_frac
+
             root.expand(state, np.array([0.]), logit)
             root.visit_count += 1
 
