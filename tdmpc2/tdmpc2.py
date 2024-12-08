@@ -106,9 +106,6 @@ class TDMPC2(torch.nn.Module):
 			task = torch.tensor([task], device=self.device)
 		if self.cfg.mpc:
 			action = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
-			action = math.int_to_one_hot(torch.Tensor(action).long(),self.cfg.action_dim)
-
-			return action
 		else:
 			z = self.model.encode(obs, task)
 			action = self.model.pi(z, task)[1]
@@ -158,8 +155,7 @@ class TDMPC2(torch.nn.Module):
 			#input = state, action, reward_hidden(for lstm predicting reward) training=False
 			#output = next_state, value_prefix, output_values, policy, reward_hidden
 			_, best_actions, _ = self.mcts.search(self.model, obs.shape[0], z, values, logits, task,device=self.device)
-
-			return best_actions
+			return math.int_to_one_hot(torch.Tensor(best_actions).long(),self.cfg.action_dim)
 
 		if self.cfg.num_pi_trajs > 0:
 			pi_actions = torch.empty(self.cfg.horizon, self.cfg.num_pi_trajs, self.cfg.action_dim, device=self.device)
