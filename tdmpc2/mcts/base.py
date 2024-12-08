@@ -86,46 +86,46 @@ class MCTS:
     #         return policy.argmax(dim=-1).unsqueeze(1)
 
     def update_statistics(self, **kwargs):
-        if kwargs.get('prediction'):
             # prediction for next states, rewards, values, logits
-            model = kwargs.get('model')
-            # states = torch.Tensor(kwargs.get('states')).to(model.device)
-            # last_actions = torch.Tensor(kwargs.get('actions')).to(model.device)
-            states = kwargs.get('states')
-            last_actions = kwargs.get('actions')
-            task = kwargs.get('task')
+        model = kwargs.get('model')
+        # states = torch.Tensor(kwargs.get('states')).to(model.device)
+        # last_actions = torch.Tensor(kwargs.get('actions')).to(model.device)
+        states = kwargs.get('states')
+        last_actions = kwargs.get('actions')
+        task = kwargs.get('task')
 
-            next_value_prefixes = 0
-            for _ in range(self.mpc_horizon):
-                with torch.no_grad():
-                    with autocast(self.device):
-                        states = model.next(states, last_actions, task)
-                        pred_value_prefixes = two_hot_inv(model.reward(states, last_actions, task), self.cfg)
-                        next_values = model.Q(states, last_actions, task, return_type='avg')
-                        _, last_actions, next_logits, _ = model.pi(states,task)
-                next_value_prefixes += self.discount * pred_value_prefixes
+        actions = torch.eye(self.cfg.action_dim, device=self.device).unsqueeze(0)
+
+        with torch.no_grad():
+            with autocast(self.device):
+                next_states = model.next(states, last_actions, task)
+                next_reward = two_hot_inv(model.reward(states, last_actions, task), self.cfg)
+                _, _, next_logits, _ = model.pi(next_states,task)
+
+                if states.dim() == 2:
+                    _next_states = next_states.unsqueeze(1).expand(-1, self.cfg.action_dim, -1)
+                    actions = actions.repeat(states.shape[0], 1, 1)
+                elif states.dim() == 3:
+                    _next_states = next_states.unsqueeze(2).expand(-1, -1, self.cfg.action_dim, -1)
+                    actions = actions.unsqueeze(0).repeat(states.shape[0], states.shape[1], 1, 1)
+
+                next_values = model.Q(_next_states, actions, task, return_type='avg').squeeze(2)
 
             # process outputs
-            next_value_prefixes = next_value_prefixes.detach().cpu().numpy()
-            next_values = next_values.detach().cpu().numpy()
+        next_reward = next_reward.detach().cpu().numpy()
+        next_values = torch.mean(next_values * next_logits, dim=1, keepdim=True).detach().cpu().numpy()
 
-            self.log(
-                'simulate action {}, r = {:.3f}, v = {:.3f}, logits = {}'.format(
-                    last_actions[0].tolist(),
-                    next_value_prefixes[0].item(),
-                    next_values[0].item(),
-                    next_logits[0].tolist()
-                ),
-                verbose=3
-            )
-            return states, next_value_prefixes, next_values, next_logits.detach().cpu().numpy()
-        else:
-            # env simulation for next states
-            env = kwargs.get('env')
-            current_states = kwargs.get('states')
-            last_actions = kwargs.get('actions')
-            states = env.step(last_actions)
-            raise NotImplementedError()
+        # self.log(
+        #         'simulate action {}, r = {:.3f}, v = {:.3f}, logits = {}'.format(
+        #             last_actions[0].tolist(),
+        #             next_reward[0].item(),
+        #             next_values[0].item(),
+        #             next_logits[0].tolist()
+        #         ),
+        #         verbose=3
+        #     )
+        return next_states, next_reward, next_values, next_logits.detach().cpu().numpy()
+
 
     def estimate_value(self, **kwargs):
         # prediction for value in planning

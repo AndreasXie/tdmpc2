@@ -145,16 +145,7 @@ class TDMPC2(torch.nn.Module):
 		# Sample policy trajectories
 		z = self.model.encode(obs, task)
 		if self.cfg.action == 'mcts':
-			#initial inference
-			#input = obs, output = state, output_values, policy
-			#state = z, values = values, policy = action probs
-			_, policy, logits, _ = self.model.pi(z, task) # action probs
-			values = self.model.Q(z, policy, task, return_type='avg')
-
-			#recurrent inference
-			#input = state, action, reward_hidden(for lstm predicting reward) training=False
-			#output = next_state, value_prefix, output_values, policy, reward_hidden
-			_, best_actions, _ = self.mcts.search(self.model, obs.shape[0], z, values, logits, task,device=self.device)
+			_, best_actions, _ = self.mcts.search(self.model, obs.shape[0], z, task,device=self.device)
 			return math.int_to_one_hot(torch.Tensor(best_actions).long(),self.cfg.action_dim)
 
 		if self.cfg.num_pi_trajs > 0:

@@ -30,7 +30,7 @@ class Node:
 
         self.depth = parent.depth + 1 if parent else 0
         self.visit_count = 0
-        self.value_prefix = 0.
+        self.reward = 0.
 
         self.state = None
         self.estimated_value_lst = []
@@ -42,9 +42,9 @@ class Node:
         assert Node.num_actions > 1
         assert 0 < Node.discount <= 1.
 
-    def expand(self, state, value_prefix, policy_logits):
+    def expand(self, state, reward, policy_logits):
         self.state = state
-        self.value_prefix = value_prefix
+        self.reward = reward
 
         for action in range(Node.num_actions):
             prior = policy_logits[action]
@@ -59,7 +59,7 @@ class Node:
         normalized_Qs = []
         for action, child in enumerate(self.children):
             if child.is_expanded():
-                completed_Q = child.get_value()
+                completed_Q = child.get_reward() + self.discount * child.get_value()
             else:
                 completed_Q = 0
             # 归一化
@@ -91,7 +91,7 @@ class Node:
         return qsa
 
     def get_reward(self):
-        return self.value_prefix
+        return self.reward
 
     def get_root(self):
         node = self
@@ -160,24 +160,26 @@ class PyMCTS(MCTS):
         self.c_1 = cfg.c_1
         self.c_2 = cfg.c_2
 
-    def search(self, model, batch_size, root_states, root_values, root_policy_logits, task, verbose=0, device="cuda"):
+    # def expectation(self, values, visits):
+
+    def search(self, model, batch_size, state, task, verbose=0, device="cuda"):
         # 准备工作
         Node.set_static_attributes(self.discount, self.num_actions)  # 设置 MCTS 的静态参数
         roots = [Node(prior=1) for _ in range(batch_size)]          # 为批次设置根节点
+
+        #initial inference
+        _, policy, logits, _ = model.pi(state, task) # action probs
         
-        root_states = root_states.detach().cpu()            # 根节点的状态
-        root_values = root_values.detach().cpu()           # 根节点的值
-        root_policy_logits = root_policy_logits.detach().cpu()  # 根节点的策略
+        root_states = state.detach().cpu()            # 根节点的状态
+        root_policy_logits = logits.detach().cpu()  # 根节点的策略
 
         # 扩展根节点并更新统计信息
-        for root, state, value, logit in zip(roots, root_states, root_values, root_policy_logits):
+        for root, state, logit in zip(roots, root_states, root_policy_logits):
             root.expand(state, np.array([0.]), logit)
-            root.estimated_value_lst.append(value.numpy())
             root.visit_count += 1
-        # 保存树节点的最小和最大值
+
         value_min_max_lst = [MinMaxStats(self.value_minmax_delta) for _ in range(batch_size)]
 
-        assert batch_size == len(root_states) == len(root_values)
         self.verbose = verbose
 
         # 进行 N 次模拟
@@ -224,7 +226,8 @@ class PyMCTS(MCTS):
             # 使用模型预测当前状态、奖励、值和策略
             current_states = torch.stack(current_states, dim=0).to(device)
             last_actions = torch.tensor(last_actions,dtype=torch.float32).to(device)
-            next_states, next_value_prefixes, next_values, next_logits = self.update_statistics(
+
+            next_states, next_reward, next_values, next_logits = self.update_statistics(
                 prediction=True,                                    # 使用模型预测而不是环境模拟
                 model=model,                                        # 模型
                 states=current_states,                              # 当前状态
@@ -235,7 +238,7 @@ class PyMCTS(MCTS):
             # 扩展叶子节点并向后传播以更新统计信息
             for idx in range(batch_size):
                 # 扩展叶子节点
-                leaf_nodes[idx].expand(next_states[idx], next_value_prefixes[idx], next_logits[idx])
+                leaf_nodes[idx].expand(next_states[idx], next_reward[idx], next_logits[idx])
                 # 从叶子节点向根节点传播以更新统计信息
                 self.back_propagate(search_paths[idx], next_values[idx], value_min_max_lst[idx])
 
@@ -243,7 +246,7 @@ class PyMCTS(MCTS):
         search_root_values = np.asarray([root.get_value() for root in roots])
         search_root_actions = []
         for root, value_min_max in zip(roots, value_min_max_lst):
-            action = self.final_action(root, temperature=0)
+            action = self.final_action(root, temperature=1.0)
             search_root_actions.append(action)
         search_best_actions = np.asarray(search_root_actions)
 
@@ -255,10 +258,10 @@ class PyMCTS(MCTS):
                      'search best action -> \t\t {}'
                      ''.format(search_root_values[0], search_best_actions[0]),
                      verbose=1, iteration_end=True)
-        return search_root_values,  search_best_actions, mcts_info
+        return search_root_values, search_best_actions, mcts_info
 
 
-    def final_action(self, root: Node, temperature=0):
+    def final_action(self, root: Node, temperature=1.0):
         """
         Select action according to the visit count distribution and the temperature.
         The temperature is changed dynamically with the visit_softmax_temperature function
@@ -283,10 +286,15 @@ class PyMCTS(MCTS):
     def select_action(self, node: Node, value_min_max: MinMaxStats):
         policy = np.expand_dims(node.get_policy(),1)
         Q_score = node.get_normalized_Q(value_min_max.normalize)
+
         Nb = node.get_children_visit_sum()
         Na = np.expand_dims(node.get_children_visits(),1)
+
+        pb_c = np.sqrt(Nb)/(Na+1)
+        pb_c *= self.c_1 + np.log((Nb + self.c_2 + 1)/self.c_2)
+
         #Q_score act_num, policy act_num, Nb 1, Na act_num,
-        children_scores = Q_score + policy * (np.sqrt(Nb)/(Na+1)) * (self.c_1 + np.log((Nb + self.c_2 + 1)/self.c_2))
+        children_scores = Q_score + policy * pb_c
 
         action = np.argmax(children_scores)
 
@@ -306,13 +314,13 @@ class PyMCTS(MCTS):
 
     def back_propagate(self, search_path, leaf_node_value, value_min_max):
         value = leaf_node_value
-        path_len = len(search_path)
-        for i in range(path_len - 1, -1, -1):
-            node:Node = search_path[i]
+
+        for node in reversed(search_path):
             node.estimated_value_lst.append(value)
             node.visit_count += 1
-            value = node.get_reward() + node.discount*value
-            value_min_max.update(value)
+
+            value_min_max.update(node.get_reward() + node.discount*node.get_value())
+            value = node.get_reward() + node.discount* value
 
 class SimpleEnv:
     def __init__(self, state_dim=4, num_actions=3):

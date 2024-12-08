@@ -115,3 +115,5 @@ value_minmax_delta: 1e-6      # 最小最大值更新的 delta
 value_prefix: true            # 是否使用值前缀
 vis: [log]       # 可视化选项
 std_magnification: 1.0        # 标准差放大倍数
+value_support: [-1, 1]        # 值的支持范围
+reward_support: [-1, 1]       # 奖励的支持范围
