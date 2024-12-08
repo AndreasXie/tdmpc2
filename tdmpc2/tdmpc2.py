@@ -5,7 +5,7 @@ from common import math
 from common.scale import RunningScale
 from common.world_model import WorldModel
 from tensordict import TensorDict
-from common.mcts.mcts_muzero import PyMCTS
+from mcts.mcts_muzero import PyMCTS
 
 class TDMPC2(torch.nn.Module):
 	"""
@@ -39,7 +39,7 @@ class TDMPC2(torch.nn.Module):
 			print('Compiling update function with torch.compile...')
 			self._update = torch.compile(self._update, mode="reduce-overhead")
 		if cfg.get('action') == 'mcts':
-			self.mcts = PyMCTS(cfg.get('mcts'))
+			self.mcts = PyMCTS(cfg)
 
 	@property
 	def plan(self):
@@ -106,6 +106,9 @@ class TDMPC2(torch.nn.Module):
 			task = torch.tensor([task], device=self.device)
 		if self.cfg.mpc:
 			action = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
+			action = math.int_to_one_hot(torch.Tensor(action).long(),self.cfg.action_dim)
+
+			return action
 		else:
 			z = self.model.encode(obs, task)
 			action = self.model.pi(z, task)[1]
@@ -148,14 +151,13 @@ class TDMPC2(torch.nn.Module):
 			#initial inference
 			#input = obs, output = state, output_values, policy
 			#state = z, values = values, policy = action probs
-			policy = self.model.pi(z, task)[1] # action probs
+			_, policy, logits, _ = self.model.pi(z, task) # action probs
 			values = self.model.Q(z, policy, task, return_type='avg')
 
 			#recurrent inference
 			#input = state, action, reward_hidden(for lstm predicting reward) training=False
 			#output = next_state, value_prefix, output_values, policy, reward_hidden
-			_ , _, best_actions, _ = self.mcts.search(self, obs.shape[0], z, values, 
-					policy, task, use_gumble_noise=False)
+			_, best_actions, _ = self.mcts.search(self.model, obs.shape[0], z, values, logits, task,device=self.device)
 
 			return best_actions
 

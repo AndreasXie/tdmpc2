@@ -182,7 +182,7 @@ class WorldModel(nn.Module):
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
 
-		if self.cfg.action == 'discrete':
+		if self.cfg.action == 'discrete' or self.cfg.action == 'mcts':
 			return self._discrete_pi(z, task)
 		elif self.cfg.action == 'continuous':
 			return self._continuous_pi(z, task)

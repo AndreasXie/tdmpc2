@@ -20,7 +20,7 @@ action: mcts
 
 # evaluation
 checkpoint: ???
-eval_episodes: 10
+eval_episodes: 5
 eval_freq: 5000
 
 # training
@@ -41,10 +41,10 @@ discount_max: 0.995
 buffer_size: 1_000_000
 exp_name: Asterix
 data_dir: ???
-device: cuda:0
+device: cuda:1
 
 # planning
-mpc: false
+mpc: true
 iterations: 6
 num_samples: 512
 num_elites: 64
@@ -82,7 +82,7 @@ simnorm_dim: 8
 wandb_project: atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: true
+enable_wandb: false
 save_csv: false
 
 # misc
@@ -106,23 +106,12 @@ bin_size: ???
 # speedups
 compile: False
 
-mcts:
-  num_simulations: 16           # 模拟次数
-  num_top_actions: 8           # 顶级动作数量
-  c_visit: 1.0                  # 访问计数常数
-  c_scale: 1.0                  # 缩放常数
-  c_base: 19652                 # 基础常数
-  c_init: 1.25                  # 初始化常数
-  dirichlet_alpha: 0.3          # Dirichlet 分布的 alpha 参数
-  explore_frac: 0.25            # 探索比例
-  discount: 0.997            # 折扣因子
-  value_minmax_delta: 1e-6      # 最小最大值更新的 delta
-  value_support: [-1, 1]        # 值的支持范围
-  reward_support: [-1, 1]       # 奖励的支持范围
-  value_prefix: true            # 是否使用值前缀
-  hidden_state_size: 128        # 隐藏状态大小
-  hidden_horizon_len: 20        # 隐藏状态的时间步长
-  mpc_horizon: 5               # MPC 的时间步长
-  env: dmcontrol                 # 环境实例
-  vis: [log, text, graph]       # 可视化选项
-  std_magnification: 1.0        # 标准差放大倍数
+#mcts:
+num_simulations: 50           # 模拟次数
+c_2: 19652.                 # for muzero
+c_1: 1.25                  # for muzero
+discount: 0.997            # 折扣因子
+value_minmax_delta: 1e-6      # 最小最大值更新的 delta
+value_prefix: true            # 是否使用值前缀
+vis: [log]       # 可视化选项
+std_magnification: 1.0        # 标准差放大倍数

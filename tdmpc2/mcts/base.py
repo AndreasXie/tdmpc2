@@ -1,8 +1,9 @@
 import copy
 import torch
-from torch.cuda.amp import autocast as autocast
+from torch.amp import autocast
 import numpy as np
 import torch.nn.functional as F
+from common.math import two_hot_inv
 
 def symexp(x):
 	"""
@@ -11,47 +12,66 @@ def symexp(x):
 	"""
 	return torch.sign(x) * (torch.exp(torch.abs(x)) - 1)
 
-def two_hot_inv(x, cfg):
-	"""Converts a batch of soft two-hot encoded vectors to scalars."""
-	if cfg.num_bins == 0:
-		return x
-	elif cfg.num_bins == 1:
-		return symexp(x)
-	dreg_bins = torch.linspace(cfg.vmin, cfg.vmax, cfg.num_bins, device=x.device, dtype=x.dtype)
-	x = F.softmax(x, dim=-1)
-	x = torch.sum(x * dreg_bins, dim=-1, keepdim=True)
-	return symexp(x)
+# def two_hot_inv(x, cfg):
+# 	"""Converts a batch of soft two-hot encoded vectors to scalars."""
+# 	if cfg.num_bins == 0:
+# 		return x
+# 	elif cfg.num_bins == 1:
+# 		return symexp(x)
+# 	dreg_bins = torch.linspace(cfg.vmin, cfg.vmax, cfg.num_bins, device=x.device, dtype=x.dtype)
+# 	x = F.softmax(x, dim=-1)
+# 	x = torch.sum(x * dreg_bins, dim=-1, keepdim=True)
+# 	return symexp(x)
 
+        # self.num_actions = cfg.action_dim
+        # self.num_simulations = cfg.num_simulations
+        # self.num_top_actions = cfg.num_top_actions
+        # self.c_visit = cfg.c_visit
+        # self.c_scale = cfg.c_scale
+        # self.c_base = cfg.c_base
+        # self.c_init = cfg.c_init
+        # self.dirichlet_alpha = cfg.dirichlet_alpha
+        # self.explore_frac = cfg.explore_frac
+        # self.discount = cfg.discount
+        # self.value_minmax_delta = cfg.value_minmax_delta
+        # self.value_support = cfg.value_support
+        # self.reward_support = cfg.reward_support
+        # self.value_prefix = cfg.value_prefix
+        # self.hidden_horizon_len = 1
+        # self.mpc_horizon = cfg.mpc_horizon
+        # self.env = cfg.env
+        # self.vis = cfg.vis  # vis: [log, text, graph]
+        # self.std_magnification = cfg.std_magnification
+
+        # self.current_num_top_actions = self.num_top_actions  # /2 every phase
+        # self.current_phase = 0  # current phase index
+        # self.visit_num_for_next_phase = max(
+        #     np.floor(self.num_simulations / (np.log2(self.num_top_actions) * self.current_num_top_actions)), 1
+        # ) * self.current_num_top_actions  # how many visit counts for next phase
+        # self.used_visit_num = 0
+        # self.verbose = 0
+        # assert self.num_top_actions <= self.num_actions
 class MCTS:
     def __init__(self, cfg):
-        self.num_actions = cfg.num_actions
+        self.num_actions = cfg.action_dim
         self.num_simulations = cfg.num_simulations
-        self.num_top_actions = cfg.num_top_actions
-        self.c_visit = cfg.c_visit
-        self.c_scale = cfg.c_scale
-        self.c_base = cfg.c_base
-        self.c_init = cfg.c_init
-        self.dirichlet_alpha = cfg.dirichlet_alpha
-        self.explore_frac = cfg.explore_frac
         self.discount = cfg.discount
         self.value_minmax_delta = cfg.value_minmax_delta
-        self.value_support = cfg.value_support
-        self.reward_support = cfg.reward_support
         self.value_prefix = cfg.value_prefix
-        self.hidden_horizon_len = 1
-        self.mpc_horizon = cfg.mpc_horizon
-        self.env = cfg.env
+        self.mpc_horizon = cfg.horizon
+        self.env = cfg.task_platform
         self.vis = cfg.vis  # vis: [log, text, graph]
         self.std_magnification = cfg.std_magnification
 
-        self.current_num_top_actions = self.num_top_actions  # /2 every phase
+        self.current_num_top_actions = self.num_actions  # /2 every phase
         self.current_phase = 0  # current phase index
         self.visit_num_for_next_phase = max(
-            np.floor(self.num_simulations / (np.log2(self.num_top_actions) * self.current_num_top_actions)), 1
+            np.floor(self.num_simulations / (np.log2(self.num_actions) * self.current_num_top_actions)), 1
         ) * self.current_num_top_actions  # how many visit counts for next phase
         self.used_visit_num = 0
         self.verbose = 0
-        assert self.num_top_actions <= self.num_actions
+        self.device = cfg.device
+        self.cfg = cfg
 
     def search(self, model, batch_size, root_states, root_values, root_policy_logits, **kwargs):
         raise NotImplementedError()
@@ -69,6 +89,8 @@ class MCTS:
         if kwargs.get('prediction'):
             # prediction for next states, rewards, values, logits
             model = kwargs.get('model')
+            # states = torch.Tensor(kwargs.get('states')).to(model.device)
+            # last_actions = torch.Tensor(kwargs.get('actions')).to(model.device)
             states = kwargs.get('states')
             last_actions = kwargs.get('actions')
             task = kwargs.get('task')
@@ -76,13 +98,12 @@ class MCTS:
             next_value_prefixes = 0
             for _ in range(self.mpc_horizon):
                 with torch.no_grad():
-                    with autocast():
+                    with autocast(self.device):
                         states = model.next(states, last_actions, task)
-                        pred_value_prefixes = model.reward(states, last_actions, task)
+                        pred_value_prefixes = two_hot_inv(model.reward(states, last_actions, task), self.cfg)
                         next_values = model.Q(states, last_actions, task, return_type='avg')
-                        next_logits = model.pi(states,task)[2]
-                # last_actions = self.sample_mpc_actions(next_logits)
-                next_value_prefixes += pred_value_prefixes
+                        _, last_actions, next_logits, _ = model.pi(states,task)
+                next_value_prefixes += self.discount * pred_value_prefixes
 
             # process outputs
             next_value_prefixes = next_value_prefixes.detach().cpu().numpy()
@@ -97,7 +118,7 @@ class MCTS:
                 ),
                 verbose=3
             )
-            return states, next_value_prefixes, next_values, next_logits
+            return states, next_value_prefixes, next_values, next_logits.detach().cpu().numpy()
         else:
             # env simulation for next states
             env = kwargs.get('env')
@@ -141,10 +162,10 @@ class MCTS:
                 print('<' * 50)
 
     def reset(self):
-        self.current_num_top_actions = self.num_top_actions
+        self.current_num_top_actions = self.num_actions
         self.current_phase = 0
         self.visit_num_for_next_phase = max(
-            np.floor(self.num_simulations / (np.log2(self.num_top_actions) * self.current_num_top_actions)), 1
+            np.floor(self.num_simulations / (np.log2(self.num_actions) * self.current_num_top_actions)), 1
         ) * self.current_num_top_actions  # how many visit counts for next phase
         self.used_visit_num = 0
         self.verbose = 0

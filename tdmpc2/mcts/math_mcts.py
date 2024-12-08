@@ -85,3 +85,8 @@ def softmax(logits):
     logits -= logits.max()
     e_x = np.exp(logits)
     return e_x / e_x.sum()
+
+def int_to_one_hot(x, num_classes):
+    one_hot = np.zeros((*x.shape, num_classes))
+    one_hot[x] = 1
+    return one_hot
