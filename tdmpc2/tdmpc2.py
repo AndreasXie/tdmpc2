@@ -39,7 +39,8 @@ class TDMPC2(torch.nn.Module):
 			print('Compiling update function with torch.compile...')
 			self._update = torch.compile(self._update, mode="reduce-overhead")
 		if cfg.get('action') == 'mcts':
-			self.mcts = PyMCTS(cfg)
+			self.step_counter = 0
+			self.mcts_temperature = cfg.mcts_temperature
 
 	@property
 	def plan(self):
@@ -145,7 +146,16 @@ class TDMPC2(torch.nn.Module):
 		# Sample policy trajectories
 		z = self.model.encode(obs, task)
 		if self.cfg.action == 'mcts':
-			_, best_actions, _ = self.mcts.search(self.model, obs.shape[0], z, task,device=self.device)
+			self.step_counter += 1
+			mcts = PyMCTS(self.cfg)
+			training_steps = self.cfg.steps - self.cfg.seed_steps
+
+			if self.step_counter == training_steps/2:
+				self.mcts_temperature = 0.5 
+			elif self.step_counter == training_steps*3/4:
+				self.mcts_temperature = 0.25
+
+			_, best_actions, _ = mcts.search(self.model, obs.shape[0], z, task, self.mcts_temperature, self.device)
 			return math.int_to_one_hot(torch.Tensor(best_actions).long(),self.cfg.action_dim)
 
 		if self.cfg.num_pi_trajs > 0:

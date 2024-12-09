@@ -85,7 +85,6 @@ def two_hot_inv(x, cfg):
 	x = torch.sum(x * dreg_bins, dim=-1, keepdim=True)
 	return symexp(x)
 
-
 def gumbel_softmax_sample(p, temperature=1.0, dim=0):
 	logits = p.log()
 	# Generate Gumbel noise

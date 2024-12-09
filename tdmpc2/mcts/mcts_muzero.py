@@ -164,13 +164,13 @@ class PyMCTS(MCTS):
 
     # def expectation(self, values, visits):
 
-    def search(self, model, batch_size, state, task, verbose=0, device="cuda"):
+    def search(self, model, batch_size, state, task, verbose=0, temperature = 1.0, device="cuda"):
         # 准备工作
         Node.set_static_attributes(self.discount, self.num_actions)  # 设置 MCTS 的静态参数
         roots = [Node(prior=1) for _ in range(batch_size)]          # 为批次设置根节点
 
         #initial inference
-        _, policy, _logits, _ = model.pi(state, task) # action probs
+        _, _, _logits, _ = model.pi(state, task) # action probs
         
         root_states = state.detach().cpu()            # 根节点的状态
         root_policy_logits = _logits.detach().cpu()  # 根节点的策略
@@ -255,7 +255,7 @@ class PyMCTS(MCTS):
         search_root_values = np.asarray([root.get_value() for root in roots])
         search_root_actions = []
         for root, value_min_max in zip(roots, value_min_max_lst):
-            action = self.final_action(root, temperature=1.0)
+            action = self.final_action(root, temperature=temperature)
             search_root_actions.append(action)
         search_best_actions = np.asarray(search_root_actions)
 

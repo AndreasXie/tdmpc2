@@ -2,7 +2,7 @@ defaults:
     - override hydra/launcher: submitit_local
 
 # environment
-task: Asterix
+task: Alien
 obs: rgb
 task_platform: atari
 has_done: true
@@ -15,7 +15,7 @@ max_episode_steps: 4000
 episode_life: true
 clip_rewards: true
 resize: 96
-noop: 0
+noop: 30
 action: mcts
 
 # evaluation
@@ -24,7 +24,7 @@ eval_episodes: 5
 eval_freq: 5000
 
 # training
-steps: 150_000
+steps: 125_000
 batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1
@@ -41,7 +41,7 @@ discount_max: 0.995
 buffer_size: 1_000_000
 exp_name: mcts_muzero
 data_dir: ???
-device: cuda:1
+device: cuda:2
 
 # planning
 mpc: true
@@ -88,7 +88,7 @@ save_csv: false
 # misc
 save_video: false #should be solved in atari
 save_agent: false
-seed: 1
+seed: 6
 
 # convenience
 work_dir: ???
@@ -119,3 +119,4 @@ value_support: [-1, 1]        # 值的支持范围
 reward_support: [-1, 1]       # 奖励的支持范围
 dirichlet_alpha: 0.3          # Dirichlet 分布的 alpha 参数
 explore_frac: 0.25            # 探索比例
+mcts_temperature: 1.0              

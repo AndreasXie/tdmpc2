@@ -113,7 +113,7 @@ class MCTS:
 
             # process outputs
         next_reward = next_reward.detach().cpu().numpy()
-        next_values = torch.mean(next_values * next_logits, dim=1, keepdim=True).detach().cpu().numpy()
+        next_values = torch.sum(next_values * next_logits, dim=1, keepdim=True).detach().cpu().numpy()
 
         # self.log(
         #         'simulate action {}, r = {:.3f}, v = {:.3f}, logits = {}'.format(
