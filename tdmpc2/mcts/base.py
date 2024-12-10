@@ -55,19 +55,10 @@ class MCTS:
     def __init__(self, cfg):
         self.num_actions = cfg.action_dim
         self.num_simulations = cfg.num_simulations
-        self.discount = cfg.discount
         self.value_minmax_delta = cfg.value_minmax_delta
-        self.value_prefix = cfg.value_prefix
         self.mpc_horizon = cfg.horizon
         self.env = cfg.task_platform
         self.vis = cfg.vis  # vis: [log, text, graph]
-        self.std_magnification = cfg.std_magnification
-
-        self.current_num_top_actions = self.num_actions  # /2 every phase
-        self.current_phase = 0  # current phase index
-        self.visit_num_for_next_phase = max(
-            np.floor(self.num_simulations / (np.log2(self.num_actions) * self.current_num_top_actions)), 1
-        ) * self.current_num_top_actions  # how many visit counts for next phase
         self.used_visit_num = 0
         self.verbose = 0
         self.device = cfg.device

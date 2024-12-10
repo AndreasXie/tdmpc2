@@ -20,7 +20,7 @@ action: mcts
 
 # evaluation
 checkpoint: ???
-eval_episodes: 5
+eval_episodes: 10
 eval_freq: 5000
 
 # training
@@ -41,7 +41,7 @@ discount_max: 0.995
 buffer_size: 1_000_000
 exp_name: mcts_muzero
 data_dir: ???
-device: cuda:2
+device: cuda:0
 
 # planning
 mpc: true
@@ -82,7 +82,7 @@ simnorm_dim: 8
 wandb_project: atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: true
+enable_wandb: false
 save_csv: false
 
 # misc
@@ -110,13 +110,8 @@ compile: False
 num_simulations: 50           # 模拟次数
 c_2: 19652.                 # for muzero
 c_1: 1.25                  # for muzero
-discount: 0.997            # 折扣因子
 value_minmax_delta: 1e-6      # 最小最大值更新的 delta
-value_prefix: true            # 是否使用值前缀
 vis: [log]       # 可视化选项
-std_magnification: 1.0        # 标准差放大倍数
-value_support: [-1, 1]        # 值的支持范围
-reward_support: [-1, 1]       # 奖励的支持范围
 dirichlet_alpha: 0.3          # Dirichlet 分布的 alpha 参数
 explore_frac: 0.25            # 探索比例
 mcts_temperature: 1.0              

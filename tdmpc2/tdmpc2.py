@@ -155,7 +155,7 @@ class TDMPC2(torch.nn.Module):
 			elif self.step_counter == training_steps*3/4:
 				self.mcts_temperature = 0.25
 
-			_, best_actions, _ = mcts.search(self.model, obs.shape[0], z, task, self.mcts_temperature, self.device)
+			_, best_actions, _ = mcts.search(self.model, obs.shape[0], z, task, 0, self.mcts_temperature, self.discount, self.device)
 			return math.int_to_one_hot(torch.Tensor(best_actions).long(),self.cfg.action_dim)
 
 		if self.cfg.num_pi_trajs > 0:

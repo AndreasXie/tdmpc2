@@ -164,8 +164,9 @@ class PyMCTS(MCTS):
 
     # def expectation(self, values, visits):
 
-    def search(self, model, batch_size, state, task, verbose=0, temperature = 1.0, device="cuda"):
+    def search(self, model, batch_size, state, task, verbose=0, temperature = 1.0, discount = 0.997, device="cuda"):
         # 准备工作
+        self.discount = discount
         Node.set_static_attributes(self.discount, self.num_actions)  # 设置 MCTS 的静态参数
         roots = [Node(prior=1) for _ in range(batch_size)]          # 为批次设置根节点
 
