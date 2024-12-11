@@ -164,7 +164,7 @@ class PyMCTS(MCTS):
 
     # def expectation(self, values, visits):
 
-    def search(self, model, batch_size, state, task, verbose=0, temperature = 1.0, discount = 0.997, device="cuda"):
+    def search(self, model, batch_size, state, task, verbose=0, temperature = 1.0, discount = 0.997, noise = True, device="cuda"):
         # 准备工作
         self.discount = discount
         Node.set_static_attributes(self.discount, self.num_actions)  # 设置 MCTS 的静态参数
@@ -176,15 +176,17 @@ class PyMCTS(MCTS):
         root_states = state.detach().cpu()            # 根节点的状态
         root_policy_logits = _logits.detach().cpu()  # 根节点的策略
 
-        dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.dirichlet_alpha]*self.num_actions))
+        if noise:
+            dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.dirichlet_alpha]*self.num_actions))
 
         # 扩展根节点并更新统计信息
         for root, state, logit in zip(roots, root_states, root_policy_logits):
             # noise = np.random.dirichlet([self.dirichlet_alpha] * self.num_actions)
-            noise = dirichlet_noise.sample().cpu()
-            for action in range(self.num_actions):
-                logit[action] = logit[action] * (1 - self.explore_frac) + noise[action] * self.explore_frac
-
+            if noise:
+                noise = dirichlet_noise.sample().cpu()
+                for action in range(self.num_actions):
+                    logit[action] = logit[action] * (1 - self.explore_frac) + noise[action] * self.explore_frac
+                
             root.expand(state, np.array([0.]), logit)
             root.visit_count += 1
 
