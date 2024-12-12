@@ -113,15 +113,12 @@ def make_atari(cfg):
         game_name, seed, save_path=None, **kwargs
     """
     # params
-    env_id = cfg.get('task')
+    env_id = cfg.get('task') + 'NoFrameskip-v4'
     gray_scale = cfg.get('gray_scale')
-    obs_to_string = cfg.get('obs_to_string')
     skip = cfg.get('n_skip', 4)
-    obs_shape = cfg.get('obs_shape') if cfg.get('obs_shape') != '???' else [3, 96, 96]
     resize = cfg.get('resize', 96)
     max_episode_steps = cfg.get('max_episode_steps') if cfg.get('max_episode_steps') else 108000 // skip
     episodic_life = cfg.get('episode_life')
-    clip_reward = cfg.get('clip_rewards')
     noop = cfg.get('noop')
 
     try:
@@ -129,18 +126,17 @@ def make_atari(cfg):
             env = gym.make(env_id)
             env = SimpleWrapper(cfg,env)
         else:
-
-            env = gym.make(env_id) 
+            env = gym.make(env_id, max_episode_steps=max_episode_steps) 
             env = gym.wrappers.RecordEpisodeStatistics(env)
 
             env = NoopResetEnv(env, noop_max=noop) if noop > 0 else env
-            env = MaxAndSkipEnv(env, skip=4)
-            env = EpisodicLifeEnv(env)#manually made, rather than using 
+            env = MaxAndSkipEnv(env, skip=skip) if skip > 1 else env
+            env = EpisodicLifeEnv(env) if episodic_life else env
             if "FIRE" in env.unwrapped.get_action_meanings():
                 env = FireResetEnv(env)
-            env = gym.wrappers.ResizeObservation(env, (84, 84))
+            env = gym.wrappers.ResizeObservation(env, (resize, resize))
             env = gym.wrappers.GrayScaleObservation(env) if gray_scale else env
-            env = gym.wrappers.FrameStack(env, 4)
+            env = gym.wrappers.FrameStack(env, skip)
             env.action_space.seed(cfg.get('seed'))
         return env
     except:
@@ -199,7 +195,7 @@ def run_one_episode(env_cfg):
 if __name__ == "__main__":
     # Example configuration for testing Breakout
     cfg = {
-        'task': 'AsterixNoFrameskip-v4',
+        'task': 'Asterix',
         'gray_scale': True,
         'obs_to_string': False,
         'n_skip': 4,

@@ -49,10 +49,11 @@ class PixelWrapperAtari(gym.Wrapper):
         self.clip_reward = cfg.get('clip_reward')
         self.action_range = env.action_space.n
         self.transpose = not cfg.gray_scale#if no gray sacle, dim 4,84,84,3 need to be transpose
+        self.resize = cfg.get('resize')
 
     def format_obs(self, obs):
         if self.transpose:
-             obs = obs.permute(0, 3, 1, 2).reshape(12, 84, 84)#4,84,84,3 => 12,84,84
+             obs = obs.permute(0, 3, 1, 2).reshape(12, self.resize, self.resize)#4,84,84,3 => 12,84,84
         return obs
 
     def step(self, action):

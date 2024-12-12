@@ -41,6 +41,7 @@ class TDMPC2(torch.nn.Module):
 		if cfg.get('action') == 'mcts':
 			self.step_counter = 0
 			self.mcts_temperature = cfg.mcts_temperature
+			self.mcts = PyMCTS(self.cfg)
 
 	@property
 	def plan(self):
@@ -67,7 +68,7 @@ class TDMPC2(torch.nn.Module):
 			float: Discount factor for the task.
 		"""
 		frac = episode_length/self.cfg.discount_denom
-		return min(max((frac-1)/(frac), self.cfg.discount_min), self.cfg.discount_max)
+		return min(max((frac-1)/(frac), self.cfg.discount_min), self.cfg.discount_max) if self.cfg.get('task_platform') != 'atari' else self.cfg.get('discount', 0.997)
 
 	def save(self, fp):
 		"""
@@ -329,6 +330,16 @@ class TDMPC2(torch.nn.Module):
 			torch.Tensor: TD-target.
 		"""
 		_, _, next_act_prob, next_log_prob = self.model.pi(next_z, task)
+		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
+
+		if self.cfg.action == 'mcts' and self.cfg.reanalyze == True:
+			_next_z = next_z.reshape(-1, self.cfg.latent_dim)
+			search_root_values, _, _ = self.mcts.search(self.model, _next_z.shape[0], _next_z, task, 0, 
+																		 self.cfg.mcts_temperature, self.discount, False, self.device)
+			search_root_values = torch.Tensor(search_root_values.reshape(next_z.shape[0], next_z.shape[1], 1)).to(next_z.device)
+			td_targets = reward + discount * search_root_values * (1 - done)
+			return td_targets
+		
 		actions = torch.eye(self.cfg.action_dim, device=next_z.device).unsqueeze(0)
 		if next_z.dim() == 2:
 			# z (batch_size, latent_dim) -> (batch_size, action_dim, latent_dim)
@@ -344,7 +355,6 @@ class TDMPC2(torch.nn.Module):
 		min_q_next_target = next_act_prob * (qs - self.cfg.entropy_coef * next_log_prob)
 		min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True)
 
-		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		td_targets = reward + discount * min_q_next_target * (1 - done)
 		return td_targets
 

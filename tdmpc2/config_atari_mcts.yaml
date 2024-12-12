@@ -11,12 +11,13 @@ has_done: true
 gray_scale: false
 obs_to_string: true
 n_skip: 4
-max_episode_steps: 4000
+max_episode_steps: 108_000
 episode_life: true
 clip_rewards: true
 resize: 96
 noop: 30
-action: mcts
+action: mcts #discrete, continuous, mcts
+discount: 0.997
 
 # evaluation
 checkpoint: ???
@@ -107,11 +108,12 @@ bin_size: ???
 compile: False
 
 #mcts:
-num_simulations: 50           # 模拟次数
+num_simulations: 50       # 模拟次数
 c_2: 19652.                 # for muzero
 c_1: 1.25                  # for muzero
 value_minmax_delta: 1e-6      # 最小最大值更新的 delta
 vis: [log]       # 可视化选项
 dirichlet_alpha: 0.3          # Dirichlet 分布的 alpha 参数
 explore_frac: 0.25            # 探索比例
-mcts_temperature: 1.0              
+mcts_temperature: 1.0    
+reanalyze: false
