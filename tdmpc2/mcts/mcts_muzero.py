@@ -1,12 +1,8 @@
-import copy 
 import torch
 from torch.cuda.amp import autocast as autocast
 import numpy as np
 from torch import nn
-import math
-import torch.nn.functional as F
-from torch.distributions import TransformedDistribution, Normal, constraints
-from torch.distributions import transforms
+
 try:
     from mcts.base import MCTS
     from mcts.math_mcts import *
@@ -162,26 +158,20 @@ class PyMCTS(MCTS):
         self.dirichlet_alpha = cfg.dirichlet_alpha
         self.explore_frac = cfg.explore_frac
 
-    # def expectation(self, values, visits):
-
     def search(self, model, batch_size, state, task, verbose=0, temperature = 1.0, discount = 0.997, noise = True, device="cuda"):
-        # 准备工作
         self.discount = discount
-        Node.set_static_attributes(self.discount, self.num_actions)  # 设置 MCTS 的静态参数
-        roots = [Node(prior=1) for _ in range(batch_size)]          # 为批次设置根节点
+        Node.set_static_attributes(self.discount, self.num_actions) 
+        roots = [Node(prior=1) for _ in range(batch_size)]         
 
-        #initial inference
-        _, _, _logits, _ = model.pi(state, task) # action probs
+        _, _, _logits, _ = model.pi(state, task) 
         
-        root_states = state.detach().cpu()            # 根节点的状态
-        root_policy_logits = _logits.detach().cpu()  # 根节点的策略
+        root_states = state.detach().cpu()            
+        root_policy_logits = _logits.detach().cpu()  
 
         if noise:
             dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.dirichlet_alpha]*self.num_actions))
 
-        # 扩展根节点并更新统计信息
         for root, state, logit in zip(roots, root_states, root_policy_logits):
-            # noise = np.random.dirichlet([self.dirichlet_alpha] * self.num_actions)
             if noise:
                 noise = dirichlet_noise.sample().cpu()
                 for action in range(self.num_actions):
@@ -194,27 +184,24 @@ class PyMCTS(MCTS):
 
         self.verbose = verbose
 
-        # 进行 N 次模拟
         mcts_info = {}
         for simulation_idx in range(self.num_simulations):
-            leaf_nodes = []                                         # 当前模拟的叶子节点
-            last_actions = []                                       # 叶子节点的选择动作
-            current_states = []                                     # 叶子节点的隐藏状态
-            search_paths = []                                       # 当前搜索迭代中的节点路径
+            leaf_nodes = []                                         
+            last_actions = []                                       
+            current_states = []                                    
+            search_paths = []                                       
 
             self.log('Iteration {} \t'.format(simulation_idx), verbose=2, iteration_begin=True)
             if self.verbose > 1:
                 self.log('Tree:', verbose=2)
                 roots[0].print([])
 
-            # 为根节点选择动作
             trajectories = []
             for idx in range(batch_size):
-                node = roots[idx]                                   # 搜索从根节点开始
-                search_path = [node]                                # 保存从根到叶子的搜索路径
-                value_min_max = value_min_max_lst[idx]              # 记录树状态的最小值和最大值
+                node = roots[idx]                                  
+                search_path = [node]                                
+                value_min_max = value_min_max_lst[idx]              
 
-                # 从根节点搜索直到未扩展的叶子节点
                 action = -1
                 select_action_lst = []
                 while node.is_expanded():
@@ -226,8 +213,7 @@ class PyMCTS(MCTS):
                 assert action >= 0
 
                 self.log('selection path -> {}'.format(select_action_lst), verbose=4)
-                # 更新一些统计信息
-                parent = search_path[-2]                            # 获取叶子节点的父节点
+                parent = search_path[-2]                           
                 current_states.append(parent.state)
 
                 last_actions.append(int_to_one_hot(action,self.num_actions))
@@ -235,26 +221,21 @@ class PyMCTS(MCTS):
                 search_paths.append(search_path)
                 trajectories.append(select_action_lst)
 
-            # 使用模型预测当前状态、奖励、值和策略
             current_states = torch.stack(current_states, dim=0).to(device)
             last_actions = torch.tensor(last_actions,dtype=torch.float32).to(device)
 
             next_states, next_reward, next_values, next_logits = self.update_statistics(
-                prediction=True,                                    # 使用模型预测而不是环境模拟
-                model=model,                                        # 模型
-                states=current_states,                              # 当前状态
-                actions=last_actions,                               # 最后选择的动作
+                prediction=True,                                   
+                model=model,                                        
+                states=current_states,                             
+                actions=last_actions,                               
                 task=task
             )
 
-            # 扩展叶子节点并向后传播以更新统计信息
             for idx in range(batch_size):
-                # 扩展叶子节点
                 leaf_nodes[idx].expand(next_states[idx], next_reward[idx], next_logits[idx])
-                # 从叶子节点向根节点传播以更新统计信息
                 self.back_propagate(search_paths[idx], next_values[idx], value_min_max_lst[idx])
 
-            # 获取最终结果和信息
         search_root_values = np.asarray([root.get_value() for root in roots])
         search_root_actions = []
         for root, value_min_max in zip(roots, value_min_max_lst):
@@ -334,6 +315,7 @@ class PyMCTS(MCTS):
             value_min_max.update(node.get_reward() + node.discount*node.get_value())
             value = node.get_reward() + node.discount* value
 
+# below code is for testing
 class SimpleEnv:
     def __init__(self, state_dim=4, num_actions=3):
         self.state_dim = state_dim
@@ -341,13 +323,11 @@ class SimpleEnv:
         self.counter = 0
 
     def reset(self, batch_size=1):
-        # 返回固定初始状态，全0张量
         self.current_states = torch.zeros(batch_size, self.state_dim)
         self.counter = 0
         return self.current_states
 
     def step(self, actions):
-        # 每次step让状态加1，确定性
         batch_size = actions.shape[0]
         self.counter += 1
         next_states = torch.ones(batch_size, self.state_dim)*self.counter
@@ -361,30 +341,22 @@ class SimpleModel(nn.Module):
         self.num_actions = num_actions
 
     def forward(self, states):
-        # 简单映射，不用于本示例
         return states
 
     def next(self, states, actions, task=None):
-        # next_states = states + 1 的确定性映射
         next_states = states + 1.
         return next_states
 
     def reward(self, states, actions, task=None):
-        # 确定性奖励：r = state[:,0] + action
-        # state[:,0] 是batch中state第一个元素
         r = states[:,0] + actions.squeeze(-1).float()
         return r
 
     def Q(self, states, actions, task=None, return_type='avg'):
-        # 确定性Q值：Q = state[:,0]*10 + action
         Q = states[:,0]*10.0 + actions.squeeze(-1).float()
         return Q
 
     def pi(self, states, task=None):
-        # 返回固定策略logits，如： [0.3,0.5,0.2]
-        # 不涉及随机函数，固定为常量张量
         logits = torch.tensor([[0.3, 0.5, 0.2]], dtype=torch.float)
-        # broadcast到当前batch大小
         batch_size = states.shape[0]
         logits = logits.expand(batch_size, -1)
         return torch.zeros_like(logits), torch.ones_like(logits)*0.1, logits
@@ -414,8 +386,7 @@ if __name__ == "__main__":
     batch_size = 1
     root_states = env.reset(batch_size=batch_size)
     root_values = model.Q(root_states, torch.zeros(batch_size,1).long()).detach().cpu().numpy()
-    # 固定策略logits，如上model中定义的pi()
-    # pi给定为[0.3,0.5,0.2]，对batch进行扩展
+
     fixed_logits = np.array([[0.3,0.5,0.2]],dtype=np.float32)
 
     search_root_values, search_best_actions, mcts_info = \

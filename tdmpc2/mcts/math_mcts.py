@@ -4,7 +4,6 @@ from torch.distributions import transforms
 import torch.nn.functional as F
 import numpy as np
 
-# 定义 TanhTransform
 class TanhTransform(transforms.Transform):
     domain = constraints.real
     codomain = constraints.interval(-1.0, 1.0)
@@ -30,7 +29,6 @@ class TanhTransform(transforms.Transform):
     def log_abs_det_jacobian(self, x, y):
         return 2. * (math.log(2.) - x - F.softplus(-2. * x))
 
-# 定义 SquashedNormal 分布
 class SquashedNormal(TransformedDistribution):
     def __init__(self, loc, scale):
         self.loc = loc
@@ -46,7 +44,6 @@ class SquashedNormal(TransformedDistribution):
             mu = tr(mu)
         return mu
 
-# 定义 MinMaxStats 类
 class MinMaxStats:
     def __init__(self, minmax_delta, min_value_bound=None, max_value_bound=None):
         """
@@ -69,8 +66,7 @@ class MinMaxStats:
                 value = self.maximum
             elif value <= self.minimum:
                 value = self.minimum
-            # 仅在设置了最大值和最小值时进行归一化
-            value = (value - self.minimum) / max(self.maximum - self.minimum, self.minmax_delta)  # [0, 1] 范围
+            value = (value - self.minimum) / max(self.maximum - self.minimum, self.minmax_delta)
 
         value = max(min(value, 1), 0)
         return value
@@ -79,7 +75,6 @@ class MinMaxStats:
         self.maximum = -float('inf')
         self.minimum = float('inf')
 
-# 定义 softmax 函数
 def softmax(logits):
     # logits = np.asarray(logits)
     logits -= logits.max()

@@ -8,8 +8,6 @@ from stable_baselines3.common.atari_wrappers import (
     MaxAndSkipEnv,
     NoopResetEnv,
 )
-
-
 class EpisodicLifeEnv(gym.Wrapper):
     def __init__(self, env):
         """Make end-of-life == end-of-episode, but only reset on true game over.
@@ -117,12 +115,12 @@ def make_atari(cfg):
     gray_scale = cfg.get('gray_scale')
     skip = cfg.get('n_skip', 4)
     resize = cfg.get('resize', 96)
-    max_episode_steps = cfg.get('max_episode_steps') if cfg.get('max_episode_steps') else 108000 // skip
+    max_episode_steps = cfg.get('max_episode_steps')
     episodic_life = cfg.get('episode_life')
     noop = cfg.get('noop')
 
     try:
-        if "v1" in env_id:#which means the game is from the classic tasks of gym like cartpole and  no pixel wrapper is needed
+        if "v1" in env_id:#which means the game is from the classic tasks of gym like cartpole and no pixel wrapper is needed
             env = gym.make(env_id)
             env = SimpleWrapper(cfg,env)
         else:
@@ -142,7 +140,7 @@ def make_atari(cfg):
     except:
         raise ValueError('Unknown task:', env_id)
     
-#Just for tesing
+#below code is just for tesing atati envs 
 def run_one_episode(env_cfg):
     """
     Run one episode in the Atari environment with random actions and print step-by-step information.
@@ -196,16 +194,16 @@ if __name__ == "__main__":
     # Example configuration for testing Breakout
     cfg = {
         'task': 'Asterix',
-        'gray_scale': True,
+        'gray_scale': False,
         'obs_to_string': False,
         'n_skip': 4,
         'obs_shape': [3, 96, 96],
-        'resize': 84,
+        'resize': 96,
         'max_episode_steps': 1000,
         'episode_life': True,
         'clip_rewards': True,
         'seed': 42,
-        'noop':0
+        'noop':30
     }
 
     run_one_episode(cfg)

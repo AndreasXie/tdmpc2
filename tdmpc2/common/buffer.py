@@ -102,6 +102,9 @@ class Buffer():
 		if 'obs' in td and self.cfg.has_done:
 			# 确保数据在 [0, 255] 范围内，并转换为 uint8
 			td['obs'] = td['obs'].clamp(0, 255).to(torch.uint8)
+		a = td['action']
+		obs = td['obs']
+		reward = td['reward']
 		
 		td['episode'] = torch.full_like(td['reward'], self._num_eps, dtype=torch.int64)
 		if self._num_eps == 0:
@@ -112,5 +115,9 @@ class Buffer():
 
 	def sample(self):
 		"""Sample a batch of subsequences from the buffer."""
-		td = self._buffer.sample().view(-1, self.cfg.horizon+1).permute(1, 0)
-		return self._prepare_batch_atari(td) if self.cfg.has_done else self._prepare_batch(td)
+		if self.cfg.has_done and self.cfg.task_platform == 'atari':
+			td = self._buffer.sample().view(-1, self.cfg.horizon+1).permute(1, 0)
+			return self._prepare_batch_atari(td)
+		else:
+			td = self._buffer.sample().view(-1, self.cfg.horizon+1).permute(1, 0)
+			return self._prepare_batch(td)

@@ -99,7 +99,6 @@ def make_env(cfg):
 		cfg.obs_shape = {cfg.get('obs', 'state'): env.observation_space.shape}
 	cfg.action_dim = env.action_space.n if cfg.action == 'discrete' or cfg.action == 'mcts' else env.action_space.shape[0]
 	cfg.episode_length = env.max_episode_steps if cfg.get('max_episode_steps', '???') == '???' else cfg.max_episode_steps
-	cfg.seed_steps = 20_000 if cfg.get('task_platform') == 'atari' else max(1000, 5*cfg.episode_length) 
-	# cfg.seed_steps = cfg.max_episode_steps
+	cfg.seed_steps = cfg.get('pretrain_steps') if cfg.get('task_platform') == 'atari' else max(1000, 5*cfg.episode_length) 
 	return env
 
