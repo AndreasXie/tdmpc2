@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from tensordict.tensordict import TensorDict
 from trainer.base import Trainer
-
+from ..envs import make_env
 
 class OnlineTrainer(Trainer):
 	"""Trainer class for single-task online TD-MPC2 training."""
@@ -25,6 +25,7 @@ class OnlineTrainer(Trainer):
 
 	def eval(self):
 		"""Evaluate a TD-MPC2 agent."""
+		self.env = make_env(self.cfg)
 		ep_rewards, ep_successes = [], []
 		for i in range(self.cfg.eval_episodes):
 			done, ep_reward, t = False, 0, 0
