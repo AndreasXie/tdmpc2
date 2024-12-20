@@ -21,6 +21,7 @@ discount: 0.997
 pretrain_steps: 20_000
 downsample: false
 reduced_channels: 16
+video: true
 
 # evaluation
 checkpoint: ???

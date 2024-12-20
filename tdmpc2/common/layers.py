@@ -169,9 +169,10 @@ def conv_atari_downsample(in_shape, num_channels, reduced_channels=16 , act=None
 	layers = [
 		PixelPreprocess(),
 		DownSample(in_shape, num_channels),
-		ResidualBlock(num_channels, num_channels),
+		ResidualBlock(num_channels, num_channels, norm=True),
 		nn.Flatten(),
-		nn.Linear(num_channels * 6 * 6, 512)
+		nn.Linear(num_channels * 6 * 6, 512), 
+		nn.ReLU(inplace=False)
 		]
 	if act:
 		layers.append(act)
@@ -189,7 +190,7 @@ def enc(cfg, out={}):
 				out[k] = conv(cfg.obs_shape[k], cfg.num_channels, act=SimNorm(cfg))
 			else:
 				if cfg.downsample:
-					out[k] = conv_atari_downsample(4 if cfg.gray_scale else 12, cfg.num_channels)
+					out[k] = conv_atari_downsample(4 if cfg.gray_scale else 12, cfg.num_channels, act=SimNorm(cfg))
 				else:
 					out[k] = conv_atari(4 if cfg.gray_scale else 12, cfg.num_channels, act=SimNorm(cfg))
 		else:

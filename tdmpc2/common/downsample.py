@@ -33,7 +33,7 @@ class ResidualBlock(nn.Module):
 
         out = self.conv1(x)
         out = self.bn1(out)
-        out = nn.functional.mish(out)
+        out = nn.functional.relu(out)
 
         out = self.conv2(out)
         out = self.bn2(out)
@@ -42,9 +42,9 @@ class ResidualBlock(nn.Module):
             identity = self.downsample(x)
 
         out += identity
-        out = nn.functional.mish(out)
-        if self.norm:
-            out = normalize_state(out)
+        out = nn.functional.relu(out)
+        # if self.norm:
+        #     out = normalize_state(out)
         return out
 
 class DownSample(nn.Module):
@@ -83,7 +83,7 @@ class DownSample(nn.Module):
     def forward(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
-        x = nn.functional.mish(x)
+        x = nn.functional.relu(x)
         for block in self.resblocks1:
             x = block(x)
         x = self.downsample_block(x)
