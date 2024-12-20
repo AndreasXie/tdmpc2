@@ -25,6 +25,7 @@ class OnlineTrainer(Trainer):
 
 	def eval(self):
 		"""Evaluate a TD-MPC2 agent."""
+		self.env = make_env(self.cfg)
 		ep_rewards, ep_successes = [], []
 		for i in range(self.cfg.eval_episodes):
 			done, ep_reward, t = False, 0, 0
@@ -76,8 +77,6 @@ class OnlineTrainer(Trainer):
 			# Evaluate agent periodically
 			if self._step % self.cfg.eval_freq == 0:
 				eval_next = True
-				self.env = make_env(self.cfg)
-				obs = self.env.reset() # Reset environment for evaluation and handling memory leaks
 
 			# Reset environment
 			if done:
