@@ -125,13 +125,13 @@ def make_atari(cfg):
             env = SimpleWrapper(cfg,env)
         else:
             env = gym.make(env_id, max_episode_steps=max_episode_steps) 
-            env = gym.wrappers.RecordEpisodeStatistics(env)
+            # env = gym.wrappers.RecordEpisodeStatistics(env)
 
             env = NoopResetEnv(env, noop_max=noop) if noop > 0 else env
             env = MaxAndSkipEnv(env, skip=skip) if skip > 1 else env
             env = EpisodicLifeEnv(env) if episodic_life else env
-            if "FIRE" in env.unwrapped.get_action_meanings():
-                env = FireResetEnv(env)
+            # if "FIRE" in env.unwrapped.get_action_meanings():
+            #     env = FireResetEnv(env)
             env = gym.wrappers.ResizeObservation(env, (resize, resize))
             env = gym.wrappers.GrayScaleObservation(env) if gray_scale else env
             env = gym.wrappers.FrameStack(env, skip)
