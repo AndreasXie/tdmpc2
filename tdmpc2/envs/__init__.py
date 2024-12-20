@@ -6,17 +6,12 @@ import gym
 
 from envs.wrappers.multitask import MultitaskWrapper
 from envs.wrappers.pixels import PixelWrapper, PixelWrapperAtari
-from envs.atari import SimpleWrapper
 from envs.wrappers.tensor import TensorWrapper, TensorWrapperAtari
 from envs.wrappers.discrete import DiscreteWrapper
 
 def missing_dependencies(task):
 	raise ValueError(f'Missing dependencies for task {task}; install dependencies to use this environment.')
 
-try:
-	from envs.simple_env import make_simple as make_simple_env
-except:
-	make_simple_env = missing_dependencies
 try:
 	from envs.dmcontrol import make_env as make_dm_control_env
 except:
