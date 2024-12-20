@@ -19,12 +19,12 @@ noop: 30
 action: discrete #discrete, continuous, mcts
 discount: 0.997
 pretrain_steps: 20_000
-downsample: true
+downsample: false
 reduced_channels: 16
 
 # evaluation
 checkpoint: ???
-eval_episodes: 1
+eval_episodes: 10
 eval_freq: 10000
 
 # training
@@ -83,7 +83,7 @@ dropout: 0.01
 simnorm_dim: 8
 
 # logging
-wandb_project: downsample
+wandb_project: official_atari
 wandb_entity: yux076-ucsd
 wandb_silent: false
 enable_wandb: false

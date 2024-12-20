@@ -275,7 +275,7 @@ class PyMCTS(MCTS):
             )
             action = np.random.choice(actions, p=visit_count_distribution)
         return action
-    
+
     def select_action(self, node: Node, value_min_max: MinMaxStats):
         policy = np.expand_dims(node.get_policy(),1)
         Q_score = node.get_normalized_Q(value_min_max.normalize)
