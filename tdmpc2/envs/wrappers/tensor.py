@@ -65,7 +65,6 @@ class TensorWrapperAtari(gym.Wrapper):
 
 	def __init__(self, env, cfg=None):
 		super().__init__(env)
-		self.action_mode = cfg.get('action_mode', 'category')
 		self.action_space = env.action_space
 	
 	def rand_act(self):

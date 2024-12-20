@@ -82,9 +82,8 @@ def make_env(cfg):
 		
 
 	if cfg.get('task_platform') == 'atari':
-		if cfg.get('obs', 'state') == 'rgb':
-			env = TensorWrapperAtari(env,cfg) 
-			env = PixelWrapperAtari(cfg,env)
+		env = TensorWrapperAtari(env,cfg) 
+		env = PixelWrapperAtari(cfg,env)
 	else:
 		env = TensorWrapper(env,cfg) 
 		if cfg.get('obs', 'state') == 'rgb':

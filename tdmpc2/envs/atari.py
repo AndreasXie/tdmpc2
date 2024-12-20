@@ -2,9 +2,7 @@ import gymnasium as gym
 import numpy as np
 
 from stable_baselines3.common.atari_wrappers import (
-    ClipRewardEnv,
-    FireResetEnv,
-    EpisodicLifeEnv as sEpisodicLifeEnv,
+    EpisodicLifeEnv,
     MaxAndSkipEnv,
     NoopResetEnv,
 )
@@ -57,36 +55,6 @@ class EpisodicLifeEnv(gym.Wrapper):
 
     def render(self,mode):
         return self.env.render(mode)
-class SimpleWrapper(gym.Wrapper):
-    def __init__(self, cfg, env):
-        """Cosine Consistency loss function: similarity loss
-        Parameters
-        ----------
-        obs_to_string: bool. Convert the observation to jpeg string if True, in order to save memory usage.
-        """
-        super().__init__(env)
-        self.clip_reward = cfg.get('clip_reward')
-        self.action_range = env.action_space.n
-        self.thresholds = np.linspace(0, 1, self.action_range+1)
-    
-    def step(self, action):
-        obs, reward, done, trunc, info = self.env.step(np.argmax(action).item())
-
-        info['raw_reward'] = reward
-        if self.clip_reward:
-            reward = np.sign(reward)
-
-        return obs, reward, 1. if done or trunc else 0., info
-
-    def reset(self, **kwargs):
-        obs = self.env.reset(**kwargs)
-        return obs
-
-    def close(self):
-        return self.env.close()
-    
-    def render(self, mode='rgb_array', **kwargs):
-        return self.env.render(mode, **kwargs)
 
 def make_atari(cfg):
     """Make Atari games
@@ -120,22 +88,18 @@ def make_atari(cfg):
     noop = cfg.get('noop')
 
     try:
-        if "v1" in env_id:#which means the game is from the classic tasks of gym like cartpole and no pixel wrapper is needed
-            env = gym.make(env_id)
-            env = SimpleWrapper(cfg,env)
-        else:
-            env = gym.make(env_id, max_episode_steps=max_episode_steps) 
-            # env = gym.wrappers.RecordEpisodeStatistics(env)
+        env = gym.make(env_id, max_episode_steps=max_episode_steps) 
+        # env = gym.wrappers.RecordEpisodeStatistics(env)
 
-            env = NoopResetEnv(env, noop_max=noop) if noop > 0 else env
-            env = MaxAndSkipEnv(env, skip=skip) if skip > 1 else env
-            env = EpisodicLifeEnv(env) if episodic_life else env
+        env = NoopResetEnv(env, noop_max=noop) if noop > 0 else env
+        env = MaxAndSkipEnv(env, skip=skip) if skip > 1 else env
+        env = EpisodicLifeEnv(env) if episodic_life else env
             # if "FIRE" in env.unwrapped.get_action_meanings():
             #     env = FireResetEnv(env)
-            env = gym.wrappers.ResizeObservation(env, (resize, resize))
-            env = gym.wrappers.GrayScaleObservation(env) if gray_scale else env
-            env = gym.wrappers.FrameStack(env, skip)
-            env.action_space.seed(cfg.get('seed'))
+        env = gym.wrappers.ResizeObservation(env, (resize, resize))
+        env = gym.wrappers.GrayScaleObservation(env) if gray_scale else env
+        env = gym.wrappers.FrameStack(env, skip)
+        env.action_space.seed(cfg.get('seed'))
         return env
     except:
         raise ValueError('Unknown task:', env_id)
