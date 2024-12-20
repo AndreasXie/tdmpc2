@@ -189,7 +189,7 @@ def enc(cfg, out={}):
 				out[k] = conv(cfg.obs_shape[k], cfg.num_channels, act=SimNorm(cfg))
 			else:
 				if cfg.downsample:
-					out[k] = conv_atari_downsample(4 if cfg.gray_scale else 12, cfg.num_channels, act=SimNorm(cfg))
+					out[k] = conv_atari_downsample(4 if cfg.gray_scale else 12, cfg.num_channels)
 				else:
 					out[k] = conv_atari(4 if cfg.gray_scale else 12, cfg.num_channels, act=SimNorm(cfg))
 		else:
