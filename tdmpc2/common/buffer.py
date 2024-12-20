@@ -3,7 +3,6 @@ from tensordict.tensordict import TensorDict
 from torchrl.data.replay_buffers import ReplayBuffer, LazyTensorStorage, LazyMemmapStorage
 from torchrl.data.replay_buffers.samplers import SliceSampler
 
-
 class Buffer():
 	"""
 	Replay buffer for TD-MPC2 training. Based on torchrl.
@@ -89,7 +88,7 @@ class Buffer():
 		Expects `td` to be a TensorDict with batch size TxB.
 		"""
 		td = td.select("obs", "action", "reward", "done", "task", strict=False).to(self._device, non_blocking=True)
-		obs = (td.get('obs').float()).contiguous()  # 转回 float32
+		obs = (td.get('obs')).float().contiguous()
 		action = td.get('action')[1:].contiguous()
 		reward = td.get('reward')[1:].unsqueeze(-1).contiguous()
 		done = td.get('done')[1:].unsqueeze(-1).contiguous()
@@ -103,10 +102,6 @@ class Buffer():
 		if 'obs' in td and self.cfg.has_done:
 			# 确保数据在 [0, 255] 范围内，并转换为 uint8
 			td['obs'] = td['obs'].clamp(0, 255).to(torch.uint8)
-		a = td['action']
-		obs = td['obs']
-		reward = td['reward']
-		
 		td['episode'] = torch.full_like(td['reward'], self._num_eps, dtype=torch.int64)
 		if self._num_eps == 0:
 			self._buffer = self._init(td)

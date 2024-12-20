@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from tensordict.tensordict import TensorDict
 from trainer.base import Trainer
-from ..envs import make_env
+from envs import make_env
 
 class OnlineTrainer(Trainer):
 	"""Trainer class for single-task online TD-MPC2 training."""
@@ -25,7 +25,6 @@ class OnlineTrainer(Trainer):
 
 	def eval(self):
 		"""Evaluate a TD-MPC2 agent."""
-		self.env = make_env(self.cfg)
 		ep_rewards, ep_successes = [], []
 		for i in range(self.cfg.eval_episodes):
 			done, ep_reward, t = False, 0, 0
@@ -77,10 +76,12 @@ class OnlineTrainer(Trainer):
 			# Evaluate agent periodically
 			if self._step % self.cfg.eval_freq == 0:
 				eval_next = True
+				self.env = make_env(self.cfg)
+				obs = self.env.reset() # Reset environment for evaluation and handling memory leaks
 
 			# Reset environment
-			if real_done:
-				if eval_next:
+			if done:
+				if eval_next and real_done:
 					eval_metrics = self.eval()
 					eval_metrics.update(self.common_metrics())
 					self.logger.log(eval_metrics, 'eval')

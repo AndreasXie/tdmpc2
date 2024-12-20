@@ -11,7 +11,7 @@ has_done: true
 gray_scale: false
 obs_to_string: true
 n_skip: 4
-max_episode_steps: 108_000
+max_episode_steps: 3000
 episode_life: true
 clip_rewards: true
 resize: 96
@@ -19,10 +19,12 @@ noop: 30
 action: discrete #discrete, continuous, mcts
 discount: 0.997
 pretrain_steps: 20_000
+downsample: true
+reduced_channels: 16
 
 # evaluation
 checkpoint: ???
-eval_episodes: 10
+eval_episodes: 1
 eval_freq: 10000
 
 # training
@@ -46,7 +48,7 @@ data_dir: ???
 device: cuda:0
 
 # planning
-mpc: false
+mpc: true
 iterations: 6
 num_samples: 512
 num_elites: 64
@@ -72,7 +74,7 @@ vmax: +10
 model_size: ???
 num_enc_layers: 2
 enc_dim: 256
-num_channels: 32
+num_channels: 64
 mlp_dim: 512
 latent_dim: 512
 task_dim: 96
@@ -81,7 +83,7 @@ dropout: 0.01
 simnorm_dim: 8
 
 # logging
-wandb_project: atari
+wandb_project: downsample
 wandb_entity: yux076-ucsd
 wandb_silent: false
 enable_wandb: false

@@ -3,63 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tensordict import from_modules
 from copy import deepcopy
+from .downsample import conv3x3, ResidualBlock, DownSample
 
-class ResidualBlock(nn.Module):
-    """
-    标准残差块：保持特征图尺寸和通道数不变。
-    """
-    def __init__(self, channels):
-        super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm2d(channels)
-    
-    def forward(self, x):
-        identity = x
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-        
-        out = self.conv2(out)
-        out = self.bn2(out)
-        
-        out += identity
-        out = self.relu(out)
-        return out
-
-class ResidualDownsampleBlock(nn.Module):
-    """
-    残差下采样块：通过步幅 2 进行下采样，同时增加输出通道数。
-    """
-    def __init__(self, in_channels, out_channels):
-        super(ResidualDownsampleBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        
-        self.downsample = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=2, bias=False),
-            nn.BatchNorm2d(out_channels)
-        )
-    
-    def forward(self, x):
-        identity = self.downsample(x)
-        
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-        
-        out = self.conv2(out)
-        out = self.bn2(out)
-        
-        out += identity
-        out = self.relu(out)
-        return out
-	
 class Ensemble(nn.Module):
 	"""
 	Vectorized ensemble of modules.
@@ -216,6 +161,22 @@ def conv_atari(in_shape, num_channels, act=None):
 		layers.append(act)
 	return nn.Sequential(*layers)
 
+def conv_atari_downsample(in_shape, num_channels, reduced_channels=16 , act=None):
+	"""
+	Basic convolutional encoder for TD-MPC2 with raw image observations.
+	4 layers of convolution with ReLU activations, followed by a linear layer.
+	"""
+	layers = [
+		PixelPreprocess(),
+		DownSample(in_shape, num_channels),
+		ResidualBlock(num_channels, num_channels),
+		nn.Flatten(),
+		nn.Linear(num_channels * 6 * 6, 512)
+		]
+	if act:
+		layers.append(act)
+	return nn.Sequential(*layers)
+
 def enc(cfg, out={}):
 	"""
 	Returns a dictionary of encoders for each observation in the dict.
@@ -227,8 +188,10 @@ def enc(cfg, out={}):
 			if cfg.task_platform != 'atari':
 				out[k] = conv(cfg.obs_shape[k], cfg.num_channels, act=SimNorm(cfg))
 			else:
-				out[k] = conv_atari(4 if cfg.gray_scale else 12, cfg.num_channels, act=SimNorm(cfg))
+				if cfg.downsample:
+					out[k] = conv_atari_downsample(4 if cfg.gray_scale else 12, cfg.num_channels, act=SimNorm(cfg))
+				else:
+					out[k] = conv_atari(4 if cfg.gray_scale else 12, cfg.num_channels, act=SimNorm(cfg))
 		else:
 			raise NotImplementedError(f"Encoder for observation type {k} not implemented.")
 	return nn.ModuleDict(out)
-
