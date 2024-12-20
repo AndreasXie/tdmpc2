@@ -25,7 +25,6 @@ class OnlineTrainer(Trainer):
 
 	def eval(self):
 		"""Evaluate a TD-MPC2 agent."""
-		self.env = make_env(self.cfg)
 		ep_rewards, ep_successes = [], []
 		for i in range(self.cfg.eval_episodes):
 			done, ep_reward, t = False, 0, 0
@@ -80,6 +79,10 @@ class OnlineTrainer(Trainer):
 
 			# Reset environment
 			if done:
+				if real_done:
+					self.cfg.max_episode_steps = 3000 if eval_next else 27000
+					self.env = make_env(self.cfg)
+
 				if eval_next and real_done:
 					eval_metrics = self.eval()
 					eval_metrics.update(self.common_metrics())
