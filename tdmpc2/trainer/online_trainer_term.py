@@ -80,7 +80,7 @@ class OnlineTrainer(Trainer):
 			# Reset environment
 			if done:
 				if real_done:
-					self.cfg.max_episode_steps = 3000 if eval_next else 27000
+					self.cfg.max_episode_steps = 27000 if eval_next else 3000
 					self.env = make_env(self.cfg)
 
 				if eval_next and real_done:
