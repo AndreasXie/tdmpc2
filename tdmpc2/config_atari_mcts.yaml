@@ -35,10 +35,10 @@ reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
 rho: 0.5
-lr: 0.2
-optimizer: sgd
-# lr: 3e-4
-# optimizer: adam
+# lr: 0.2
+# optimizer: sgd
+lr: 3e-4
+optimizer: adam
 enc_lr_scale: 0.3
 grad_clip_norm: 20
 tau: 0.01
