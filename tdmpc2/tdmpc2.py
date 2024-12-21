@@ -36,7 +36,7 @@ class TDMPC2(torch.nn.Module):
 				{'params': self.model._Qs.parameters()},
 				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
 				 }
-			], lr=self.cfg.lr)
+			], lr=self.cfg.lr, weight_decay=0.0001,momentum=0.9)
 
 		self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
 		self.model.eval()
