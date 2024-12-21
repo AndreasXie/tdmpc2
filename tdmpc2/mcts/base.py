@@ -117,32 +117,6 @@ class MCTS:
         #     )
         return next_states, next_reward, next_values, next_logits.detach().cpu().numpy()
 
-
-    def estimate_value(self, **kwargs):
-        # prediction for value in planning
-        model = kwargs.get('model')
-        current_states = kwargs.get('states')
-        actions = kwargs.get('actions')
-
-        Value = 0
-        discount = 1
-        for i in range(actions.shape[0]):
-            current_states_hidden = None
-            with torch.no_grad():
-                with autocast():
-                    next_states, pred_value_prefixes, next_values, next_logits = \
-                        model.recurrent_inference(current_states, actions[i])
-
-            next_value_prefixes = next_value_prefixes.detach()
-            next_values = next_values.detach()
-            current_states = next_states
-            Value += next_value_prefixes * discount
-            discount *= self.discount
-
-        Value += discount * next_values
-
-        return Value
-
     def log(self, string, verbose, iteration_begin=False, iteration_end=False):
         if verbose <= self.verbose:
             if iteration_begin:

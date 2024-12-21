@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-
+from torch.distributions.categorical import Categorical
 from common import math
 from common.scale import RunningScale
 from common.world_model import WorldModel
@@ -19,14 +19,25 @@ class TDMPC2(torch.nn.Module):
 		self.cfg = cfg
 		self.device = torch.device(cfg.get('device', 'cuda:0'))
 		self.model = WorldModel(cfg).to(self.device)
-		self.optim = torch.optim.Adam([
-			{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
-			{'params': self.model._dynamics.parameters()},
-			{'params': self.model._reward.parameters()},
-			{'params': self.model._Qs.parameters()},
-			{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
-			 }
-		], lr=self.cfg.lr, capturable=True)
+		if cfg.optimizer == 'adam':
+			self.optim = torch.optim.Adam([
+				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
+				{'params': self.model._dynamics.parameters()},
+				{'params': self.model._reward.parameters()},
+				{'params': self.model._Qs.parameters()},
+				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
+				 }
+			], lr=self.cfg.lr, capturable=True)
+		elif cfg.optimizer == 'sgd':
+			self.optim = torch.optim.SGD([
+				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
+				{'params': self.model._dynamics.parameters()},
+				{'params': self.model._reward.parameters()},
+				{'params': self.model._Qs.parameters()},
+				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
+				 }
+			], lr=self.cfg.lr)
+
 		self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
 		self.model.eval()
 		self.scale = RunningScale(cfg)
@@ -51,7 +62,7 @@ class TDMPC2(torch.nn.Module):
 		if self.cfg.compile:
 			plan = torch.compile(self._plan, mode="reduce-overhead")
 		else:
-			plan = self._plan
+			plan = self._plan_multistep_randomshooting if self.cfg.action == 'multistep_randomshooting' else self._plan
 		self._plan_val = plan
 		return self._plan_val
 
@@ -129,6 +140,110 @@ class TDMPC2(torch.nn.Module):
 		if self.cfg.action == 'discrete':
 			pi = pi.squeeze(1) # TODO: this is a bit hacky
 		return G + discount * self.model.Q(z, pi, task, return_type='avg')
+
+	@torch.no_grad()
+	def _plan_multistep_randomshooting(self, obs, t0=False, eval_mode=False, task=None):
+		"""
+		Plan a sequence of actions using multi-step MPPI for a discrete action space.
+		"""
+
+		# Encode observation
+		z = self.model.encode(obs, task)
+
+		# Compute pi_actions if using policy trajectories
+		if self.cfg.num_pi_trajs > 0:
+			pi_actions = torch.empty(self.cfg.horizon, self.cfg.num_pi_trajs, self.cfg.action_dim, device=self.device)
+			_z = z.repeat(self.cfg.num_pi_trajs, 1)
+			for t in range(self.cfg.horizon-1):
+				action = self.model.pi(_z, task)[1]
+				if self.cfg.action == 'discrete':
+					action = action.squeeze(1)  # Ensure shape: (num_pi_trajs, action_dim)
+				pi_actions[t] = action
+				_z = self.model.next(_z, pi_actions[t], task)
+			action = self.model.pi(_z, task)[1]
+			if self.cfg.action == 'discrete':
+				action = action.squeeze(1)
+			pi_actions[-1] = action
+
+		# Repeat z for all samples
+		z = z.repeat(self.cfg.num_samples, 1)
+
+		# Initialize probability distribution over actions (T,A)
+		if t0:
+			# If first time step in episode, start with uniform distribution
+			prob_action = torch.full((self.cfg.horizon, self.cfg.action_dim), 1.0 / self.cfg.action_dim, device=self.device)
+		else:
+			# Otherwise start from previous distribution if available, or uniform if not
+			if hasattr(self, '_prev_prob'):
+				prob_action = self._prev_prob.clone()
+			else:
+				prob_action = torch.full((self.cfg.horizon, self.cfg.action_dim), 1.0 / self.cfg.action_dim, device=self.device)
+
+		# Multi-step MPPI iterations
+		for _ in range(self.cfg.iterations):
+			actions = torch.empty(self.cfg.horizon, self.cfg.num_samples, self.cfg.action_dim, device=self.device)
+
+			# Fill in policy trajectories if any
+			if self.cfg.num_pi_trajs > 0:
+				actions[:, :self.cfg.num_pi_trajs] = pi_actions
+
+			# Sample from current prob_action
+			# Categorical expects (batch, action_dim), here batch = horizon, so it returns T distributions
+			# Sampling shape: (N - num_pi_trajs) samples from each of T distributions -> shape (N - num_pi_trajs, T)
+			dist = Categorical(prob_action)
+			actions_sample = dist.sample((self.cfg.num_samples - self.cfg.num_pi_trajs,))  # (N-num_pi, T)
+			actions_sample = actions_sample.t()  # (T, N-num_pi)
+			actions[:, self.cfg.num_pi_trajs:] = math.int_to_one_hot(actions_sample, self.cfg.action_dim)
+
+			# Optional: Apply task mask if multitask
+			if self.cfg.multitask:
+				actions = actions * self.model._action_masks[task]
+
+			# Evaluate trajectories
+			value = self._estimate_value(z, actions, task).nan_to_num(0)
+
+			# Select elite trajectories
+			elite_idxs = torch.topk(value.squeeze(1), self.cfg.num_elites, dim=0).indices
+			elite_value, elite_actions = value[elite_idxs], actions[:, elite_idxs]
+
+			# Compute weighted scores
+			max_value = elite_value.max(0).values
+			score = torch.exp(self.cfg.temperature * (elite_value - max_value))
+			score = score / (score.sum(0) + 1e-9)  # Normalize
+
+			# Update probability distribution over actions:
+			# Weighted sum over elites to get action counts
+			# elite_actions shape: (T, K, A) where K = num_elites
+			# score shape: (K, 1)
+			weighted_counts = (elite_actions * score.unsqueeze(0)).sum(dim=1)  # (T, A)
+
+			# Convert counts to probabilities
+			# Add epsilon to avoid log(0)
+			eps = 1e-6
+			new_prob = weighted_counts + eps
+			new_prob = new_prob / new_prob.sum(dim=-1, keepdim=True)
+
+			# Blend with old distribution for stability, alpha as a step size
+			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.5
+			prob_action = (1 - alpha) * prob_action + alpha * new_prob
+
+		# After finishing all iterations, sample action from final distribution or return mean action
+		# Here we return the first action of the horizon.
+		# If eval_mode, pick argmax action; else sample stochastically:
+		if eval_mode:
+			a_idx = prob_action[0].argmax(dim=-1)
+		else:
+			final_dist = Categorical(prob_action[0].unsqueeze(0)) # shape (1, A)
+			a_idx = final_dist.sample().squeeze(0)
+
+		a = math.int_to_one_hot(a_idx, self.cfg.action_dim)
+		# Store prob_action for next step if desired
+		if not hasattr(self, '_prev_prob'):
+			self._prev_prob = prob_action.clone()
+		else:
+			self._prev_prob.copy_(prob_action)
+
+		return a
 
 	@torch.no_grad()
 	def _plan(self, obs, t0=False, eval_mode=False, task=None):
