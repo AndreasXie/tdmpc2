@@ -169,7 +169,7 @@ def conv_atari_downsample(in_shape, num_channels, reduced_channels=16 , act=None
 	layers = [
 		PixelPreprocess(),
 		DownSample(in_shape, num_channels),
-		ResidualBlock(num_channels, num_channels, norm=True),
+		ResidualBlock(num_channels, num_channels),
 		nn.Flatten(),
 		nn.Linear(num_channels * 6 * 6, 512), 
 		nn.ReLU(inplace=False)
