@@ -122,7 +122,7 @@ class TDMPC2(torch.nn.Module):
 		else:
 			z = self.model.encode(obs, task)
 			action = self.model.pi(z, task)[1]
-			if self.cfg.action == 'discrete':
+			if self.cfg.get('task_platform') == 'atari':
 				action = action.squeeze(0) # TODO: this is a bit hacky
 		return action.cpu()
 
