@@ -114,6 +114,7 @@ class OnlineTrainer(Trainer):
 				episode_reward.append(info['raw_reward'] if self.cfg.clip_rewards else reward)
 			else:
 				done = True
+				real_done = True
 
 			# Update agent
 			if self._step >= self.cfg.seed_steps:
