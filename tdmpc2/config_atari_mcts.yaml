@@ -2,7 +2,7 @@ defaults:
     - override hydra/launcher: submitit_local
 
 # environment
-task: Alien
+task: Asterix
 obs: rgb
 task_platform: atari
 has_done: true
@@ -18,7 +18,7 @@ resize: 96
 noop: 30
 action: multistep_randomshooting #discrete, continuous, mcts
 discount: 0.997
-pretrain_steps: 20_000
+pretrain_steps: 2000
 downsample: false
 reduced_channels: 16
 video: true
@@ -29,7 +29,7 @@ eval_episodes: 10
 eval_freq: 10000
 
 # training
-steps: 12_500
+steps: 122_000
 batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1

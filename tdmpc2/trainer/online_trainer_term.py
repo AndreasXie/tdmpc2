@@ -99,31 +99,29 @@ class OnlineTrainer(Trainer):
 					)
 					train_metrics.update(self.common_metrics())
 					self.logger.log(train_metrics, 'train')
-					self._ep_idx = self.buffer.add(torch.cat(self._tds)) if self._step < 100_000 else self._ep_idx +1
+					self._ep_idx = self.buffer.add(torch.cat(self._tds)) if self._step <= 100_000 else self._ep_idx +1
 
 				obs = self.env.reset()
 				self._tds = [self.to_td(obs)]
 				episode_reward = []
 
 			# Collect experience
-			if self._step > self.cfg.seed_steps:
-				action = self.agent.act(obs, t0=len(self._tds)==1).squeeze(0)
+			if self._step <= 100_000:
+				if self._step < self.cfg.pretrain_steps:
+					action = self.env.rand_act()
+				else:
+					action = self.agent.act(obs, t0=len(self._tds)==1).squeeze(0)
+				obs, reward, done, trunc, info = self.env.step(action)
+				self._tds.append(self.to_td(obs, action, reward, done))
+				real_done = info['real_done'] if self.cfg.episode_life else done
+				episode_reward.append(info['raw_reward'] if self.cfg.clip_rewards else reward)
 			else:
-				action = self.env.rand_act()
-			obs, reward, done, trunc, info = self.env.step(action)
-			self._tds.append(self.to_td(obs, action, reward, done))
-			real_done = info['real_done'] if self.cfg.episode_life else done
-			episode_reward.append(info['raw_reward'] if self.cfg.clip_rewards else reward)
+				done = True
+				real_done = True
 
 			# Update agent
-			if self._step >= self.cfg.seed_steps:
-				if self._step == self.cfg.seed_steps:
-					num_updates = self.cfg.seed_steps
-					print('Pretraining agent on seed data...')
-				else:
-					num_updates = 1
-				for _ in range(num_updates):
-					_train_metrics = self.agent.update(self.buffer)
+			if self._step >= self.cfg.pretrain_steps:
+				_train_metrics = self.agent.update(self.buffer)
 				train_metrics.update(_train_metrics)
 
 			self._step += 1
