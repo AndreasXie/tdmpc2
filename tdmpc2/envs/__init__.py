@@ -29,7 +29,7 @@ try:
 except:
 	make_myosuite_env = missing_dependencies
 try:
-	from envs.atari import make_atari as make_atari_env
+	from envs.gym_atari import make_atari as make_atari_env
 except:
 	make_atari_env = missing_dependencies
 

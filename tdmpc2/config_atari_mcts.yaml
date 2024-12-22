@@ -16,7 +16,7 @@ episode_life: true
 clip_rewards: true
 resize: 96
 noop: 30
-action: discrete #discrete, continuous, mcts
+action: multistep_randomshooting #discrete, continuous, mcts
 discount: 0.997
 pretrain_steps: 20_000
 downsample: false
@@ -25,11 +25,11 @@ video: true
 
 # evaluation
 checkpoint: ???
-eval_episodes: 10
+eval_episodes: 32
 eval_freq: 10000
 
 # training
-steps: 105_000
+steps: 125_000
 batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1
@@ -48,7 +48,7 @@ discount_max: 0.995
 buffer_size: 1_000_000
 exp_name: mcts_muzero
 data_dir: ???
-device: cuda:0
+device: cuda:1
 
 # planning
 mpc: false

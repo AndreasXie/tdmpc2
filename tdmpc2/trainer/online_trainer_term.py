@@ -76,6 +76,7 @@ class OnlineTrainer(Trainer):
 			# Evaluate agent periodically
 			if self._step % self.cfg.eval_freq == 0:
 				eval_next = True
+				self.cfg.seed = self.cfg.seed + 5
 
 			# Reset environment
 			if done:
@@ -96,7 +97,7 @@ class OnlineTrainer(Trainer):
 					)
 					train_metrics.update(self.common_metrics())
 					self.logger.log(train_metrics, 'train')
-					self._ep_idx = self.buffer.add(torch.cat(self._tds))
+					self._ep_idx = self.buffer.add(torch.cat(self._tds)) if self._step < 100_000 else self._ep_idx +1
 
 				obs = self.env.reset()
 				self._tds = [self.to_td(obs)]
