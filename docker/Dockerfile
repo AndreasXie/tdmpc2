@@ -65,13 +65,13 @@ RUN conda update conda && \
 #     python -c "import mujoco_py"  # 测试导入
 
 # gym
-RUN pip install gym==0.21.0
-RUN pip install gymnasium==0.28.1
-RUN pip install gymnasium[atari]
-RUN pip install gymnasium[box2d]
-RUN pip install gymnasium[accept-rom-license]
+RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+RUN pip install gym==0.22.0
+RUN gym[atari]==0.22.0
+RUN gym[accept-rom-license]==0.22.0
 RUN pip install opencv-python
 RUN pip install stable-baselines3==2.0.0
+RUN wandb login 53afc44362eb744594a6c42fe92cf9f1079234e3
 
 # metaworld
 # RUN pip install git+https://github.com/Farama-Foundation/Metaworld.git@04be337a12305e393c0caf0cbf5ec7755c7c8feb
