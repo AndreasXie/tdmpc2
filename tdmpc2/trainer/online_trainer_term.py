@@ -76,7 +76,6 @@ class OnlineTrainer(Trainer):
 			# Evaluate agent periodically
 			if self._step % self.cfg.eval_freq == 0:
 				eval_next = True
-				self.cfg.seed = self.cfg.seed + 5
 
 			# Reset environment
 			if done:
@@ -104,14 +103,17 @@ class OnlineTrainer(Trainer):
 				episode_reward = []
 
 			# Collect experience
-			if self._step > self.cfg.seed_steps:
-				action = self.agent.act(obs, t0=len(self._tds)==1).squeeze(0)
+			if self._step < self.cfg.seed_steps - self.cfg.pretrain_steps:
+				if self._step > self.cfg.seed_steps:
+					action = self.agent.act(obs, t0=len(self._tds)==1).squeeze(0)
+				else:
+					action = self.env.rand_act()
+				obs, reward, done, trunc, info = self.env.step(action)
+				self._tds.append(self.to_td(obs, action, reward, done))
+				real_done = info['real_done'] if self.cfg.episode_life else done
+				episode_reward.append(info['raw_reward'] if self.cfg.clip_rewards else reward)
 			else:
-				action = self.env.rand_act()
-			obs, reward, done, trunc, info = self.env.step(action)
-			self._tds.append(self.to_td(obs, action, reward, done))
-			real_done = info['real_done'] if self.cfg.episode_life else done
-			episode_reward.append(info['raw_reward'] if self.cfg.clip_rewards else reward)
+				done = True
 
 			# Update agent
 			if self._step >= self.cfg.seed_steps:

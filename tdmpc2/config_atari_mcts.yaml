@@ -25,11 +25,11 @@ video: true
 
 # evaluation
 checkpoint: ???
-eval_episodes: 32
+eval_episodes: 10
 eval_freq: 10000
 
 # training
-steps: 125_000
+steps: 12_500
 batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1
