@@ -2,7 +2,7 @@ defaults:
     - override hydra/launcher: submitit_local
 
 # environment
-task: Asterix
+task: Freeway
 obs: rgb
 task_platform: atari
 has_done: true
@@ -25,7 +25,7 @@ video: true
 
 # evaluation
 checkpoint: ???
-eval_episodes: 10
+eval_episodes: 1
 eval_freq: 10000
 
 # training
