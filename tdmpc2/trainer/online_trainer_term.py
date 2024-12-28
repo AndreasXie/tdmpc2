@@ -123,8 +123,9 @@ class OnlineTrainer(Trainer):
 
 			# Update agent
 			if self._step >= self.cfg.pretrain_steps and enough_train:
-				_train_metrics = self.agent.update(self.buffer)
-				train_metrics.update(_train_metrics)
+				for _ in range(self.cfg.replay_ratio):
+					_train_metrics = self.agent.update(self.buffer)
+					train_metrics.update(_train_metrics)
 
 			self._step += 1
 
