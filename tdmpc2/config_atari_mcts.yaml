@@ -53,7 +53,7 @@ device: cuda:1
 
 # planning
 mpc: false
-iterations: 6
+iterations: 12
 num_samples: 512
 num_elites: 64
 num_pi_trajs: 24
