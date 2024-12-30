@@ -18,7 +18,7 @@ resize: 96
 noop: 30
 action: multistep_randomshooting #multistep_randomshooting #discrete, continuous, mcts
 discount: 0.997
-pretrain_steps: 200
+pretrain_steps: 1000
 downsample: false
 reduced_channels: 16
 video: true
@@ -29,7 +29,7 @@ reset_percent: 0.2
 
 # evaluation
 checkpoint: ???
-eval_episodes: 10
+eval_episodes: 1
 eval_freq: 10000
 
 # training

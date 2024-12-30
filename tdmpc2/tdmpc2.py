@@ -316,19 +316,20 @@ class TDMPC2(torch.nn.Module):
 			score = torch.exp(self.cfg.temperature * (elite_value - max_value))  # shape (K,1) or (K,)
 			score = score / score.sum(dim=0)  # normalize
 
-			score_noise = math.gumbel_softmax(score.squeeze(-1), temperature=1.0, dim=0)
-
 			# elite_actions shape: (T, K, A)
 			# score_noise shape: (K,)
-			weighted_counts = (elite_actions * score_noise.unsqueeze(1)).sum(dim=1)  # (T, A)
+			weighted_counts = (elite_actions * score).sum(dim=1)  # (T, A)
 
 			# (g) Convert counts to probabilities
 			eps = 1e-6
 			new_prob = weighted_counts + eps
 			new_prob = new_prob / new_prob.sum(dim=-1, keepdim=True)
 
+			dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.cfg.dirichlet_alpha]*new_prob.shape[-1])).sample().to(self.device)
+			new_prob[:1,:] = (1 - self.cfg.explore_frac) * new_prob[:1,:] + self.cfg.explore_frac * dirichlet_noise
+
 			# (h) Blend with old distribution
-			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.8
+			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.5
 			prob_action = (1 - alpha) * prob_action + alpha * new_prob
 
 		# 6) After finishing all iterations, pick or sample the first action
@@ -685,7 +686,7 @@ class TDMPC2(torch.nn.Module):
 			for module in all_modules:
 				modules = module.children()
 				counters = 0
-
+				
 				for m in modules:
 					if counters >= layer_num:
 						break
