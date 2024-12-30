@@ -13,6 +13,7 @@ class Ensemble(nn.Module):
 	def __init__(self, modules, **kwargs):
 		super().__init__()
 		# combine_state_for_ensemble causes graph breaks
+		self.modules_list = modules
 		self.params = from_modules(*modules, as_module=True)
 		with self.params[0].data.to("meta").to_module(modules[0]):
 			self.module = deepcopy(modules[0])
@@ -27,7 +28,6 @@ class Ensemble(nn.Module):
 
 	def __repr__(self):
 		return 'Vectorized ' + self._repr
-
 
 class ShiftAug(nn.Module):
 	"""

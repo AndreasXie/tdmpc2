@@ -95,6 +95,16 @@ def gumbel_softmax_sample(p, temperature=1.0, dim=0):
 	y_soft = gumbels.softmax(dim)
 	return y_soft.argmax(-1)
 
+def gumbel_softmax(p, temperature=1.0, dim=0):
+	logits = p.log()
+	# Generate Gumbel noise
+	gumbels = (
+		-torch.empty_like(logits, memory_format=torch.legacy_contiguous_format).exponential_().log()
+	)  # ~Gumbel(0,1)
+	gumbels = (logits + gumbels) / temperature  # ~Gumbel(logits,tau)
+	y_soft = gumbels.softmax(dim)
+	return y_soft
+
 def int_to_one_hot(x, num_classes):
 	"""
 	Converts an integer tensor to a one-hot tensor.

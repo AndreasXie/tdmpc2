@@ -34,7 +34,7 @@ class OnlineTrainer(Trainer):
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
-				action = self.agent.act(obs, t0=t==0, eval_mode=True)
+				action, _ = self.agent.act(obs, t0=t==0, eval_mode=True)
 				obs, reward, done, trunc, info = self.env.step(action)
 				done = info['real_done'] if self.cfg.episode_life else done
 				ep_reward += info['raw_reward'] if self.cfg.clip_rewards else reward
@@ -75,6 +75,7 @@ class OnlineTrainer(Trainer):
 		train_metrics, done, eval_next, real_done = {}, True, False, True
 		episode_reward = []
 		enough_train = False
+		prob_entropy = 0
 		while self._step <= self.cfg.steps:
 			# Evaluate agent periodically
 			if self._step % self.cfg.eval_freq == 0:
@@ -98,6 +99,7 @@ class OnlineTrainer(Trainer):
 					train_metrics.update(
 						episode_reward=torch.tensor(episode_reward).sum(),
 						episode_success=info['success'],
+						prob_entropy=prob_entropy
 					)
 					train_metrics.update(self.common_metrics())
 					self.logger.log(train_metrics, 'train')
@@ -112,7 +114,10 @@ class OnlineTrainer(Trainer):
 				if self._step < self.cfg.pretrain_steps:
 					action = self.env.rand_act()
 				else:
-					action = self.agent.act(obs, t0=len(self._tds)==1).squeeze(0)
+					action, prob_entropy = self.agent.act(obs, t0=len(self._tds)==1)
+					action = action.squeeze(0)
+					prob_entropy = prob_entropy.mean()
+
 				obs, reward, done, trunc, info = self.env.step(action)
 				self._tds.append(self.to_td(obs, action, reward, done))
 				real_done = info['real_done'] if self.cfg.episode_life else done
@@ -123,10 +128,12 @@ class OnlineTrainer(Trainer):
 
 			# Update agent
 			if self._step >= self.cfg.pretrain_steps and enough_train:
+				if self._step*8 % self.cfg.reset_interval == 0:
+					self.agent.reset_parameters(self.cfg.reset_layers, self.cfg.reset_percent)
+
 				for _ in range(self.cfg.replay_ratio):
 					_train_metrics = self.agent.update(self.buffer)
 					train_metrics.update(_train_metrics)
-
 			self._step += 1
 
 		self.logger.finish(self.agent)

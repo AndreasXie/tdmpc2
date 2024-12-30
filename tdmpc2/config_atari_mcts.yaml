@@ -11,18 +11,21 @@ has_done: true
 gray_scale: false
 obs_to_string: true
 n_skip: 4
-max_episode_steps: 4000
+max_episode_steps: 108_000
 episode_life: true
 clip_rewards: true
 resize: 96
 noop: 30
-action: multistep_randomshooting #discrete, continuous, mcts
+action: multistep_randomshooting #multistep_randomshooting #discrete, continuous, mcts
 discount: 0.997
-pretrain_steps: 2000
+pretrain_steps: 200
 downsample: false
 reduced_channels: 16
 video: true
-replay_ratio: 128
+replay_ratio: 8
+reset_interval: 40_000
+reset_layers: 2
+reset_percent: 0.8
 
 # evaluation
 checkpoint: ???
@@ -52,7 +55,7 @@ data_dir: ???
 device: cuda:1
 
 # planning
-mpc: false
+mpc: true
 iterations: 6
 num_samples: 512
 num_elites: 64
