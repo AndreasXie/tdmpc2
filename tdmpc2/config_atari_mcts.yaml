@@ -29,7 +29,7 @@ reset_percent: 0.2
 
 # evaluation
 checkpoint: ???
-eval_episodes: 1
+eval_episodes: 10
 eval_freq: 10000
 
 # training

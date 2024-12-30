@@ -334,7 +334,7 @@ class TDMPC2(torch.nn.Module):
 			prob_action = (1 - alpha) * prob_action + alpha * new_prob
 
 		# 6) After finishing all iterations, pick or sample the first action
-		a_idx = prob_action[0].argmax(dim=-1)
+		a_idx = math.gumbel_softmax_sample(prob_action[0].unsqueeze(0), temperature=1.0, dim=-1)
 		a = math.int_to_one_hot(a_idx, self.cfg.action_dim)
 
 		# 7) Store prob_action for next step
