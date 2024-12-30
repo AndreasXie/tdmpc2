@@ -286,7 +286,7 @@ class TDMPC2(torch.nn.Module):
 										1.0 / self.cfg.action_dim, device=self.device)
 
 		# 5) Multi-step MPPI / random-shooting iterations
-		for _ in range(self.cfg.iterations):
+		for iteration in range(self.cfg.iterations):
 			actions = torch.empty(self.cfg.horizon, self.cfg.num_samples, self.cfg.action_dim, device=self.device)
 
 			# (a) Fill in policy trajectories if any
@@ -325,8 +325,9 @@ class TDMPC2(torch.nn.Module):
 			new_prob = weighted_counts + eps
 			new_prob = new_prob / new_prob.sum(dim=-1, keepdim=True)
 
-			dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.cfg.dirichlet_alpha]*new_prob.shape[-1])).sample().to(self.device)
-			new_prob[:1,:] = (1 - self.cfg.explore_frac) * new_prob[:1,:] + self.cfg.explore_frac * dirichlet_noise
+			if iteration < self.cfg.iterations/2:
+				dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.cfg.dirichlet_alpha]*new_prob.shape[-1])).sample().to(self.device)
+				new_prob[:1,:] = (1 - self.cfg.explore_frac) * new_prob[:1,:] + self.cfg.explore_frac * dirichlet_noise
 
 			# (h) Blend with old distribution
 			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.5
