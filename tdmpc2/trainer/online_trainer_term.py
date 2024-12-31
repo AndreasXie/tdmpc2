@@ -117,7 +117,6 @@ class OnlineTrainer(Trainer):
 				else:
 					action, prob_entropy = self.agent.act(obs, t0=len(self._tds)==1)
 					action = action.squeeze(0)
-					prob_entropy = prob_entropy.mean()
 
 				obs, reward, done, trunc, info = self.env.step(action)
 				self._tds.append(self.to_td(obs, action, reward, done))

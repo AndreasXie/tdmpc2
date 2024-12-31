@@ -28,6 +28,8 @@ class TDMPC2(torch.nn.Module):
 				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
 				 }
 			], lr=self.cfg.lr, capturable=True)
+			self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
+
 		elif cfg.optimizer == 'sgd':
 			self.optim = torch.optim.SGD([
 				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
@@ -37,8 +39,8 @@ class TDMPC2(torch.nn.Module):
 				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
 				 }
 			], lr=self.cfg.lr, weight_decay=0.0001,momentum=0.9)
+			self.pi_optim = torch.optim.SGD(self.model._pi.parameters(), lr=self.cfg.lr, weight_decay=0.0001,momentum=0.9)
 
-		self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
 		self.model.eval()
 		self.scale = RunningScale(cfg)
 		self.cfg.iterations += 2*int(cfg.action_dim >= 20) # Heuristic for large action spaces
@@ -120,6 +122,7 @@ class TDMPC2(torch.nn.Module):
 			task = torch.tensor([task], device=self.device)
 		if self.cfg.mpc:
 			action, prob_entropy = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
+			prob_entropy = prob_entropy.mean()
 		else:
 			z = self.model.encode(obs, task)
 			action = self.model.pi(z, task)[1]
@@ -667,40 +670,30 @@ class TDMPC2(torch.nn.Module):
 		torch.compiler.cudagraph_mark_step_begin()
 		return self._update(obs, action, reward, **kwargs)
 	
-	def reset_parameters(self, layer_num: int, percentage: float):
-		#for encoder, using interpolated re init from SP-SPR
-		for name, param in self.model._encoder.named_parameters(recurse=True):
-			if param.requires_grad:
-				old = param.data.clone()
-				init.weight_init(param)
-				new = param.data
-				param.data = (1.0 - percentage) * old + percentage * new
-		
-		#for others, re init last n layers using init.weight_init
-		all_modules = [self.model._dynamics, self.model._reward, self.model._pi]
+	def reset_parameters(self):
+		self.model = self.model.reset(self.cfg).to(self.device)
+		self.scale.value= torch.nn.Buffer(torch.ones(1, dtype=torch.float32, device=torch.device(self.cfg.get('device', 'cuda:0'))))
+		if self.cfg.optimizer == 'adam':
+			self.optim = torch.optim.Adam([
+				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
+				{'params': self.model._dynamics.parameters()},
+				{'params': self.model._reward.parameters()},
+				{'params': self.model._Qs.parameters()},
+				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
+				 }
+			], lr=self.cfg.lr, capturable=True)
+			self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
 
-		with torch.no_grad():
-			for module in all_modules:
-				modules = module.children()
-				counters = 0
-				
-				for m in modules:
-					if counters >= layer_num:
-						break
-					counters += 1
-					for name, param in m.named_parameters(recurse=True):
-						if param.requires_grad:
-							init.weight_init(param)
-			#Completely update Qs
-			counters = 0
-			a = self.model._Qs.params.sorted_keys
-			for i in reversed(a):
-				if counters >= layer_num:
-					break
-				params = self.model._Qs.params[str(i)]
-				for param in params:
-					if param.requires_grad:
-						init.weight_init(param)
-				counters += 1
-			init.zero_([self.model._reward[-1].weight, self.model._Qs.params["2", "weight"]])
-			self.model.init()
+		elif self.cfg.optimizer == 'sgd':
+			self.optim = torch.optim.SGD([
+				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
+				{'params': self.model._dynamics.parameters()},
+				{'params': self.model._reward.parameters()},
+				{'params': self.model._Qs.parameters()},
+				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
+				 }
+			], lr=self.cfg.lr, weight_decay=0.0001,momentum=0.9)
+			self.pi_optim = torch.optim.SGD(self.model._pi.parameters(), lr=self.cfg.lr, weight_decay=0.0001,momentum=0.9)
+
+		self.model.eval()
+		self.scale = RunningScale(self.cfg)

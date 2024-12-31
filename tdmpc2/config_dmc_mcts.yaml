@@ -2,7 +2,7 @@ defaults:
     - override hydra/launcher: submitit_local
 
 # environment
-task: cartpole-swingup
+task: acrobot-swingup
 obs: state
 action: discrete #multistep_randomshooting discrete, continuous, mcts
 task_platform: dmcontrol
@@ -33,7 +33,7 @@ buffer_size: 1_000_000
 exp_name: mcts_muzero
 data_dir: ???
 device: cuda:1
-replay_ratio: 128
+replay_ratio: 16
 reset_interval: 20_000
 reset_layers: 2
 reset_percent: 0.8

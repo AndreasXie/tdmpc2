@@ -100,7 +100,6 @@ class OnlineTrainer(Trainer):
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
 				action,prob_entropy = self.agent.act(obs, t0=len(self._tds)==1)
-				prob_entropy = prob_entropy.mean()
 				action = action.squeeze(0)
 			else:
 				action = self.env.rand_act()

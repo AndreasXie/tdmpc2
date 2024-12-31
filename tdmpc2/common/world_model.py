@@ -221,3 +221,25 @@ class WorldModel(nn.Module):
 		if return_type == "min":
 			return Q.min(0).values
 		return Q.sum(0) / 2
+
+	def reset(self, cfg):
+		"""
+		Reset target Q-networks.
+		"""
+		for name, param in self._encoder.named_parameters(recurse=True):
+			if param.requires_grad:
+				old = param.data.clone()
+				init.weight_init(param)
+				new = param.data
+				param.data = (1.0 - cfg.reset_percent) * old + cfg.reset_percent * new
+
+		self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
+		self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
+		self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim if cfg.action == 'continuous' else cfg.action_dim)
+		self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
+		self.apply(init.weight_init)
+		init.zero_([self._reward[-1].weight, self._Qs.params["2", "weight"]])
+
+		self.register_buffer("log_std_min", torch.tensor(cfg.log_std_min))
+		self.register_buffer("log_std_dif", torch.tensor(cfg.log_std_max) - self.log_std_min)
+		self.init()
