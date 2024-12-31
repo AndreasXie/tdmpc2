@@ -113,7 +113,7 @@ class OnlineTrainer(Trainer):
 
 			# Update agent
 			if self._step % self.cfg.reset_interval == 0:
-				self.agent.reset_parameters(self.cfg.reset_layers, self.cfg.reset_percent)
+				self.agent.reset_parameters()
 
 			if self._step >= self.cfg.seed_steps:
 				if self._step == self.cfg.seed_steps:

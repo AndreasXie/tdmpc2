@@ -128,8 +128,8 @@ class OnlineTrainer(Trainer):
 
 			# Update agent
 			if self._step >= self.cfg.pretrain_steps and enough_train:
-				if self._step*8 % self.cfg.reset_interval == 0:
-					self.agent.reset_parameters(self.cfg.reset_layers, self.cfg.reset_percent)
+				if self._step*self.reset_ratio % self.cfg.reset_interval == 0:
+					self.agent.reset_parameters()
 
 				for _ in range(self.cfg.replay_ratio):
 					_train_metrics = self.agent.update(self.buffer)

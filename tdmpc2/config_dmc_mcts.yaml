@@ -36,7 +36,7 @@ device: cuda:1
 replay_ratio: 16
 reset_interval: 20_000
 reset_layers: 2
-reset_percent: 0.8
+reset_percent: 0.5
 
 # planning
 mpc: true
