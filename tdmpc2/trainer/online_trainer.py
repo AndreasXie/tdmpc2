@@ -32,7 +32,8 @@ class OnlineTrainer(Trainer):
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
 				torch.compiler.cudagraph_mark_step_begin()
-				action = self.agent.act(obs, t0=t==0, eval_mode=True)
+				action,_ = self.agent.act(obs, t0=t==0, eval_mode=True)	
+				action = action.squeeze(0)
 				obs, reward, done, info = self.env.step(action)
 				ep_reward += reward
 				t += 1
@@ -68,7 +69,9 @@ class OnlineTrainer(Trainer):
 	def train(self):
 		"""Train a TD-MPC2 agent."""
 		train_metrics, done, eval_next = {}, True, False
+		prob_entropy = 0
 		while self._step <= self.cfg.steps:
+			prob_entropy = 0
 			# Evaluate agent periodically
 			if self._step % self.cfg.eval_freq == 0:
 				eval_next = True
@@ -85,6 +88,7 @@ class OnlineTrainer(Trainer):
 					train_metrics.update(
 						episode_reward=torch.tensor([td['reward'] for td in self._tds[1:]]).sum(),
 						episode_success=info['success'],
+						prob_entropy=prob_entropy
 					)
 					train_metrics.update(self.common_metrics())
 					self.logger.log(train_metrics, 'train')
@@ -95,10 +99,12 @@ class OnlineTrainer(Trainer):
 
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
-				action = self.agent.act(obs, t0=len(self._tds)==1)
+				action,prob_entropy = self.agent.act(obs, t0=len(self._tds)==1)
+				prob_entropy = prob_entropy.mean()
+				action = action.squeeze(0)
 			else:
 				action = self.env.rand_act()
-			if self.cfg.action == 'discrete':
+			if self.cfg.action == 'discrete' or self.cfg.action == 'multistep_randomshooting':
 				# exploration schedule
 				# minimum 0.01, maximum 0.05, anneal over 20k steps
 				if torch.rand(1) < 0.01 + (0.05 - 0.01) * min(1, self._step / 20000):
@@ -107,12 +113,15 @@ class OnlineTrainer(Trainer):
 			self._tds.append(self.to_td(obs, action, reward))
 
 			# Update agent
+			if self._step % self.cfg.reset_interval == 0:
+				self.agent.reset_parameters(self.cfg.reset_layers, self.cfg.reset_percent)
+
 			if self._step >= self.cfg.seed_steps:
 				if self._step == self.cfg.seed_steps:
 					num_updates = self.cfg.seed_steps
 					print('Pretraining agent on seed data...')
 				else:
-					num_updates = 1
+					num_updates = self.cfg.replay_ratio
 				for _ in range(num_updates):
 					_train_metrics = self.agent.update(self.buffer)
 				train_metrics.update(_train_metrics)

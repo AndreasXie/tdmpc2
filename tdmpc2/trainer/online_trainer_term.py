@@ -77,6 +77,7 @@ class OnlineTrainer(Trainer):
 		enough_train = False
 		prob_entropy = 0
 		while self._step <= self.cfg.steps:
+			prob_entropy = 0
 			# Evaluate agent periodically
 			if self._step % self.cfg.eval_freq == 0:
 				eval_next = True

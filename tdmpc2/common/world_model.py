@@ -182,7 +182,7 @@ class WorldModel(nn.Module):
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
 
-		if self.cfg.get('task_platform') == 'atari':
+		if self.cfg.get('action') == 'discrete' or self.cfg.action == 'multistep_randomshooting':
 			return self._discrete_pi(z, task)
 		elif self.cfg.action == 'continuous':
 			return self._continuous_pi(z, task)

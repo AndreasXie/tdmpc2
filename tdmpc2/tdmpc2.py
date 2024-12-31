@@ -420,7 +420,8 @@ class TDMPC2(torch.nn.Module):
 			score = score / score.sum(0)
 			rand_idx = math.gumbel_softmax_sample(score.squeeze(1))  # gumbel_softmax_sample is compatible with cuda graphs
 			actions = torch.index_select(elite_actions, 1, rand_idx).squeeze(1)
-			return actions[0]
+			entropy = Categorical(probs=score).entropy()
+			return actions[0], entropy
 
 		# Iterate MPPI
 		for _ in range(self.cfg.iterations):
@@ -667,13 +668,8 @@ class TDMPC2(torch.nn.Module):
 		return self._update(obs, action, reward, **kwargs)
 	
 	def reset_parameters(self, layer_num: int, percentage: float):
-		encoder = self.model._encoder
-		dynamics = self.model._dynamics
-		reward = self.model._reward
-		pi = self.model._pi
-
 		#for encoder, using interpolated re init from SP-SPR
-		for name, param in encoder.named_parameters(recurse=True):
+		for name, param in self.model._encoder.named_parameters(recurse=True):
 			if param.requires_grad:
 				old = param.data.clone()
 				init.weight_init(param)
@@ -681,7 +677,7 @@ class TDMPC2(torch.nn.Module):
 				param.data = (1.0 - percentage) * old + percentage * new
 		
 		#for others, re init last n layers using init.weight_init
-		all_modules = [dynamics, reward, pi]
+		all_modules = [self.model._dynamics, self.model._reward, self.model._pi]
 
 		with torch.no_grad():
 			for module in all_modules:
@@ -695,12 +691,16 @@ class TDMPC2(torch.nn.Module):
 					for name, param in m.named_parameters(recurse=True):
 						if param.requires_grad:
 							init.weight_init(param)
-		#Completely update Qs
-		self.model._Qs = layers.Ensemble([layers.mlp(self.cfg.latent_dim + self.cfg.action_dim + self.cfg.task_dim, 
-											   2*[self.cfg.mlp_dim], max(self.cfg.num_bins, 1), 
-											   dropout=self.cfg.dropout) for _ in range(self.cfg.num_q)]).to(self.device)
-		self.model._Qs.apply(init.weight_init)
-		init.zero_([self.model._Qs.params["2", "weight"]])
-		self.model.init()
-
-
+			#Completely update Qs
+			counters = 0
+			a = self.model._Qs.params.sorted_keys
+			for i in reversed(a):
+				if counters >= layer_num:
+					break
+				params = self.model._Qs.params[str(i)]
+				for param in params:
+					if param.requires_grad:
+						init.weight_init(param)
+				counters += 1
+			init.zero_([self.model._reward[-1].weight, self.model._Qs.params["2", "weight"]])
+			self.model.init()

@@ -4,7 +4,7 @@ defaults:
 # environment
 task: cartpole-swingup
 obs: state
-action: discrete
+action: discrete #multistep_randomshooting discrete, continuous, mcts
 task_platform: dmcontrol
 max_episode_steps: ???
 has_done: false
@@ -16,12 +16,13 @@ eval_freq: 5000
 
 # training
 steps: 10_000_000
-batch_size: 256
+batch_size: 2048
 reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
 rho: 0.5
 lr: 3e-4
+optimizer: adam
 enc_lr_scale: 0.3
 grad_clip_norm: 20
 tau: 0.01
@@ -32,6 +33,10 @@ buffer_size: 1_000_000
 exp_name: mcts_muzero
 data_dir: ???
 device: cuda:1
+replay_ratio: 16
+reset_interval: 20_000
+reset_layers: 2
+reset_percent: 0.8
 
 # planning
 mpc: true
@@ -71,8 +76,8 @@ simnorm_dim: 8
 wandb_project: dmc_discrete
 wandb_entity: yux076-ucsd
 wandb_silent: false
-enable_wandb: true
-save_csv: true
+enable_wandb: false
+save_csv: false
 
 # misc
 save_video: false
@@ -97,24 +102,12 @@ bin_size: ???
 compile: False
 
 # mcts
-# mcts
-mcts:
-  num_simulations: 50           # 模拟次数
-  num_top_actions: 2           # 顶级动作数量
-  c_visit: 1.0                  # 访问计数常数
-  c_scale: 1.0                  # 缩放常数
-  c_base: 19652                 # 基础常数
-  c_init: 1.25                  # 初始化常数
-  dirichlet_alpha: 0.3          # Dirichlet 分布的 alpha 参数
-  explore_frac: 0.25            # 探索比例
-  discount: 0.99                # 折扣因子
-  value_minmax_delta: 1e-6      # 最小最大值更新的 delta
-  value_support: [-1, 1]        # 值的支持范围
-  reward_support: [-1, 1]       # 奖励的支持范围
-  value_prefix: true            # 是否使用值前缀
-  hidden_state_size: 128        # 隐藏状态大小
-  hidden_horizon_len: 20        # 隐藏状态的时间步长
-  mpc_horizon: 10               # MPC 的时间步长
-  env: dmcontrol                 # 环境实例
-  vis: [log, text, graph]       # 可视化选项
-  std_magnification: 1.0        # 标准差放大倍数
+num_simulations: 50       
+c_2: 19652.                 # for muzero
+c_1: 1.25                  # for muzero
+value_minmax_delta: 1e-6      
+vis: [log]       
+dirichlet_alpha: 0.3          
+explore_frac: 0.25            
+mcts_temperature: 1.0    
+reanalyze: false

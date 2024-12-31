@@ -12,7 +12,7 @@ class TensorWrapper(gym.Wrapper):
 
 	def __init__(self, env, cfg=None):
 		super().__init__(env)
-		self.action_mode = cfg.get('action_mode', 'category')
+		self.action_mode = cfg.get('action', 'multistep_randomshooting')
 		self.action_space = env.action_space
 	
 	def rand_act(self):
@@ -20,7 +20,7 @@ class TensorWrapper(gym.Wrapper):
 			#generate random distribution over actions number
 			act_probs = np.random.rand(self.action_space.n)
 			return torch.tensor(act_probs.astype(np.float32))
-		elif self.action_mode == 'discrete':
+		elif self.action_mode == 'multistep_randomshooting':
 			action = torch.tensor(self.action_space.sample(), dtype=torch.int64)
 			return math.int_to_one_hot(action, self.action_space.n)
 

@@ -84,14 +84,14 @@ def make_env(cfg):
 		if cfg.get('obs', 'state') == 'rgb':
 			env = PixelWrapper(cfg, env)
 
-		if cfg.get('action', 'continuous') == 'discrete':
+		if cfg.get('action', 'continuous') == 'discrete' or cfg.get('action', 'continuous') == 'multistep_randomshooting':
 			env = DiscreteWrapper(env)
 
 	try: # Dict
 		cfg.obs_shape = {k: v.shape for k, v in env.observation_space.spaces.items()}
 	except: # Box
 		cfg.obs_shape = {cfg.get('obs', 'state'): env.observation_space.shape}
-	cfg.action_dim = env.action_space.n if cfg.get('task_platform') == 'atari' else env.action_space.shape[0]
+	cfg.action_dim = env.action_space.n 
 	cfg.episode_length = env.max_episode_steps if cfg.get('max_episode_steps', '???') == '???' else cfg.max_episode_steps
 	cfg.seed_steps = cfg.get('pretrain_steps') if cfg.get('task_platform') == 'atari' else max(1000, 5*cfg.episode_length) 
 	return env

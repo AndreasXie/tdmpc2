@@ -272,8 +272,10 @@ def make_atari(cfg):
     episodic_life = cfg.get('episode_life')
     noop = cfg.get('noop')
 
-    env = gym.make(env_id) 
-
+    try:
+        env = gym.make(env_id) 
+    except:
+        raise ValueError(f"Unknown task: {env_id}")
     env.seed(cfg.get('seed'))
     env = NoopResetEnv(env, noop_max=noop) if noop > 0 else env
     env = MaxAndSkipEnv(env, skip=skip) if skip > 1 else env

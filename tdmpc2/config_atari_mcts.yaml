@@ -20,12 +20,7 @@ action: multistep_randomshooting #multistep_randomshooting #discrete, continuous
 discount: 0.997
 pretrain_steps: 1000
 downsample: false
-reduced_channels: 16
 video: true
-replay_ratio: 8
-reset_interval: 40_000
-reset_layers: 2
-reset_percent: 0.2
 
 # evaluation
 checkpoint: ???
@@ -53,6 +48,10 @@ buffer_size: 1_000_000
 exp_name: mcts_muzero
 data_dir: ???
 device: cuda:1
+replay_ratio: 8
+reset_interval: 10
+reset_layers: 2
+reset_percent: 0.2
 
 # planning
 mpc: true

@@ -1,5 +1,6 @@
 import torch.nn as nn
-
+import torch
+from tensordict import TensorDict
 
 def weight_init(m):
 	"""Custom weight initialization for TD-MPC2."""
@@ -14,7 +15,26 @@ def weight_init(m):
 			if p.dim() == 3: # Linear
 				nn.init.trunc_normal_(p, std=0.02) # Weight
 				nn.init.constant_(m[i+1], 0) # Bias
+	elif isinstance(m, TensorDict):
+		reset_parameters(m)
 
+# Reset function for weight initialization
+def _weight_init(m):
+    if isinstance(m, torch.Tensor):
+        nn.init.trunc_normal_(m, std=0.02)
+
+# Function to reset parameters
+def reset_parameters(parameters):
+    if 'weight' in parameters:
+        _weight_init(parameters['weight'])
+    if 'bias' in parameters:
+        nn.init.constant_(parameters['bias'], 0)
+    if 'ln' in parameters:
+        ln_params = parameters['ln']
+        if 'weight' in ln_params:
+            _weight_init(ln_params['weight'])
+        if 'bias' in ln_params:
+            nn.init.constant_(ln_params['bias'], 0)
 
 def zero_(params):
 	"""Initialize parameters to zero."""
