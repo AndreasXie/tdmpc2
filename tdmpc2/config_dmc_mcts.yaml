@@ -16,7 +16,7 @@ eval_freq: 5000
 
 # training
 steps: 10_000_000
-batch_size: 2048
+batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
@@ -33,7 +33,7 @@ buffer_size: 1_000_000
 exp_name: mcts_muzero
 data_dir: ???
 device: cuda:1
-replay_ratio: 16
+replay_ratio: 128
 reset_interval: 20_000
 reset_layers: 2
 reset_percent: 0.8
