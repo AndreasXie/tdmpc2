@@ -77,10 +77,10 @@ wandb_project: dmc_discrete
 wandb_entity: yux076-ucsd
 wandb_silent: false
 enable_wandb: false
-save_csv: false
+save_csv: true
 
 # misc
-save_video: false
+save_video: true
 save_agent: false
 seed: 4
 
