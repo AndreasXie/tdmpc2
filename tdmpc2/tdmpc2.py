@@ -20,7 +20,7 @@ class TDMPC2(torch.nn.Module):
 		self.device = torch.device(cfg.get('device', 'cuda:0'))
 		self.model = WorldModel(cfg).to(self.device)
 		if cfg.optimizer == 'adam':
-			self.optim = torch.optim.Adam([
+			self.optim = torch.optim.AdamW([
 				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
 				{'params': self.model._dynamics.parameters()},
 				{'params': self.model._reward.parameters()},
@@ -28,7 +28,7 @@ class TDMPC2(torch.nn.Module):
 				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
 				 }
 			], lr=self.cfg.lr, capturable=True)
-			self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
+			self.pi_optim = torch.optim.AdamW(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
 
 		elif cfg.optimizer == 'sgd':
 			self.optim = torch.optim.SGD([
@@ -309,47 +309,56 @@ class TDMPC2(torch.nn.Module):
 			# (d) Evaluate
 			value = self._estimate_value(z, actions, task).nan_to_num(0)
 
-			# (e) Select elite trajectories
-			elite_idxs = torch.topk(value.squeeze(1), self.cfg.num_elites, dim=0).indices
-			elite_value, elite_actions = value[elite_idxs], actions[:, elite_idxs]
+			# (e) Compute weights based on all trajectories using min-max normalization
+			weights = self.cfg.temperature * (value - value.min())
+			normalized_weights = weights / (value.max() - value.min())
 
-			# ------------------- ADDED/CHANGED SECTION: Gumbel-based score -------------------
-			# 1) Compute raw score: exponentiate relative to max_value for numerical stability
-			max_value = elite_value.max(dim=0).values
-			score = torch.exp(self.cfg.temperature * (elite_value - max_value))  # shape (K,1) or (K,)
-			score = score / score.sum(dim=0)  # normalize
-
-			# elite_actions shape: (T, K, A)
-			# score_noise shape: (K,)
-			weighted_counts = (elite_actions * score).sum(dim=1)  # (T, A)
+			# (f) Compute weighted counts
+			weighted_counts = torch.log((actions * normalized_weights + 1.).sum(dim=1))  # shape: (T, A)
 
 			# (g) Convert counts to probabilities
 			eps = 1e-6
 			new_prob = weighted_counts + eps
 			new_prob = new_prob / new_prob.sum(dim=-1, keepdim=True)
 
-			if iteration < self.cfg.iterations/2:
-				dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.cfg.dirichlet_alpha]*new_prob.shape[-1])).sample().to(self.device)
-				new_prob[:1,:] = (1 - self.cfg.explore_frac) * new_prob[:1,:] + self.cfg.explore_frac * dirichlet_noise
+			# (h) Blend with old distribution
+			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.5
+			prob_action = (1 - alpha) * prob_action + alpha * new_prob
+
+			dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.cfg.dirichlet_alpha]*new_prob.shape[-1]*self.cfg.horizon)).sample().to(self.device).reshape(self.cfg.horizon, self.cfg.action_dim)
+			new_prob= (1 - self.cfg.explore_frac) * new_prob+ self.cfg.explore_frac * dirichlet_noise
 
 			# (h) Blend with old distribution
 			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.5
 			prob_action = (1 - alpha) * prob_action + alpha * new_prob
 
 		# 6) After finishing all iterations, pick or sample the first action
-		a_idx = math.gumbel_softmax_sample(prob_action[0].unsqueeze(0), temperature=1.0, dim=-1)
-		a = math.int_to_one_hot(a_idx, self.cfg.action_dim)
+		dist = Categorical(prob_action)  
+		actions_sample = dist.sample((self.cfg.num_samples - self.cfg.num_pi_trajs,))  # shape: (N-num_pi, T)
+		actions_sample = actions_sample.t()  # shape: (T, N-num_pi)
+		actions[:, self.cfg.num_pi_trajs:] = math.int_to_one_hot(actions_sample, self.cfg.action_dim)
+		if self.cfg.num_pi_trajs > 0:
+			actions[:, :self.cfg.num_pi_trajs] = pi_actions
 
-		# 7) Store prob_action for next step
+		# Compute elite actions
+		value = self._estimate_value(z, actions, task).nan_to_num(0)
+		elite_idxs = torch.topk(value.squeeze(1), self.cfg.num_elites, dim=0).indices
+		elite_value, elite_actions = value[elite_idxs], actions[:, elite_idxs]
+
+		# Sample action according to score
+		max_value = elite_value.max(0).values
+		score = torch.exp(self.cfg.temperature*(elite_value - max_value))
+		score = score / score.sum(0)
+		rand_idx = math.gumbel_softmax_sample(score.squeeze(1),temperature=2.0)  # gumbel_softmax_sample is compatible with cuda graphs
+		actions = torch.index_select(elite_actions, 1, rand_idx).squeeze(1)
+		entropy = dist.entropy()
+
 		if not hasattr(self, '_prev_prob'):
 			self._prev_prob = prob_action.clone()
 		else:
 			self._prev_prob.copy_(prob_action)
 
-		final_entropy = Categorical(prob_action).entropy()
-
-		# 8) Return the chosen action (or also return distribution if you want)
-		return a, final_entropy
+		return actions[0], entropy
 
 	@torch.no_grad()
 	def _plan(self, obs, t0=False, eval_mode=False, task=None):
@@ -671,7 +680,8 @@ class TDMPC2(torch.nn.Module):
 		return self._update(obs, action, reward, **kwargs)
 	
 	def reset_parameters(self):
-		self.model = self.model.reset(self.cfg).to(self.device)
+		self.model.reset(self.cfg)
+		self.model.to(self.device)
 		self.scale.value= torch.nn.Buffer(torch.ones(1, dtype=torch.float32, device=torch.device(self.cfg.get('device', 'cuda:0'))))
 		if self.cfg.optimizer == 'adam':
 			self.optim = torch.optim.Adam([

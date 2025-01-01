@@ -4,7 +4,7 @@ defaults:
 # environment
 task: acrobot-swingup
 obs: state
-action: discrete #multistep_randomshooting discrete, continuous, mcts
+action: multistep_randomshooting #multistep_randomshooting discrete, continuous, mcts
 task_platform: dmcontrol
 max_episode_steps: ???
 has_done: false
@@ -34,7 +34,7 @@ exp_name: mcts_muzero
 data_dir: ???
 device: cuda:1
 replay_ratio: 16
-reset_interval: 20_000
+reset_interval: 2500
 reset_layers: 2
 reset_percent: 0.5
 

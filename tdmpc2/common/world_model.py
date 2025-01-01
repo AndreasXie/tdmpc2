@@ -226,18 +226,26 @@ class WorldModel(nn.Module):
 		"""
 		Reset target Q-networks.
 		"""
-		for name, param in self._encoder.named_parameters(recurse=True):
-			if param.requires_grad:
-				old = param.data.clone()
-				init.weight_init(param)
-				new = param.data
-				param.data = (1.0 - cfg.reset_percent) * old + cfg.reset_percent * new
+		old_encoder = deepcopy(self._encoder).to("cpu")
 
+		self._encoder = layers.enc(cfg)
 		self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
 		self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
 		self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim if cfg.action == 'continuous' else cfg.action_dim)
 		self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
 		
 		self.apply(init.weight_init)
+
+		layer_num = len(self._encoder)
+		for key in self._encoder.keys():
+			for layer in range(layer_num):
+				new_layer_dict = self._encoder[key][layer].state_dict()
+				old_layer_dict = old_encoder[key][layer].state_dict()
+				for key in new_layer_dict.keys():
+					if "weight" in key:
+						new_layer_dict[key] = (1.0 - cfg.reset_percent) * old_layer_dict[key] + cfg.reset_percent * new_layer_dict[key]
+					elif "bias" in key:
+						new_layer_dict[key] = new_layer_dict[key]
+
 		init.zero_([self._reward[-1].weight, self._Qs.params["2", "weight"]])
 		self.init()
