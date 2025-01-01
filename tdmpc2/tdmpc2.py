@@ -307,18 +307,17 @@ class TDMPC2(torch.nn.Module):
 				actions = actions * self.model._action_masks[task]
 
 			# (d) Evaluate
-			value = self._estimate_value(z, actions, task).nan_to_num(0)
+			value = self._estimate_value(z, actions, task).nan_to_num(0) + 1e-6
 
 			# (e) Compute weights based on all trajectories using min-max normalization
 			weights = self.cfg.temperature * (value - value.min())
-			normalized_weights = weights / (value.max() - value.min())
+			normalized_weights = weights / (value.max() - value.min() + 1e-6)
 
 			# (f) Compute weighted counts
 			weighted_counts = torch.log((actions * normalized_weights + 1.).sum(dim=1))  # shape: (T, A)
 
 			# (g) Convert counts to probabilities
-			eps = 1e-6
-			new_prob = weighted_counts + eps
+			new_prob = weighted_counts + 1e-6
 			new_prob = new_prob / new_prob.sum(dim=-1, keepdim=True)
 
 			# (h) Blend with old distribution
