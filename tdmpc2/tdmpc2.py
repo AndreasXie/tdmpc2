@@ -307,13 +307,15 @@ class TDMPC2(torch.nn.Module):
 				actions = actions * self.model._action_masks[task]
 
 			# (d) Evaluate
-			value = torch.exp(self._estimate_value(z, actions, task).nan_to_num(0) + 1e-6)
+			# value = torch.exp(self._estimate_value(z, actions, task).nan_to_num(0) + 1e-6)
+			values = self._estimate_value(z, actions, task).nan_to_num(0)
+			value = torch.exp(values - values.max())
 
 			importance_dist = (actions.permute(1,0,2) - norm_prob).permute(1,0,2)
 
 			weighted_value = value * importance_dist
 
-			new_prob = weighted_value.sum(dim=1) / value.sum()
+			new_prob = weighted_value.sum(dim=1) / (value.sum()+1e-6)
 
 			# # (e) Compute weights based on all trajectories using min-max normalization
 			# weights = self.cfg.temperature * (value - value.max())
@@ -337,7 +339,7 @@ class TDMPC2(torch.nn.Module):
 			# prob_action= (1 - self.cfg.explore_frac) * prob_action+ self.cfg.explore_frac * dirichlet_noise
 
 		# 6) After finishing all iterations, pick or sample the first action
-		norm_prob = torch.softmax(prob_action - prob_action.max(dim=1,keepdim=True).values, dim=-1)
+		norm_prob = torch.softmax(prob_action - prob_action.max(dim=1,keepdim=True).values + 1e-6, dim=-1)
 		dist = Categorical(probs=norm_prob)  
 		actions_sample = dist.sample((self.cfg.num_samples - self.cfg.num_pi_trajs,))  # shape: (N-num_pi, T)
 		actions_sample = actions_sample.t()  # shape: (T, N-num_pi)
@@ -351,7 +353,7 @@ class TDMPC2(torch.nn.Module):
 		# Sample action according to score
 		max_value = elite_value.max(0).values
 		score = torch.exp(self.cfg.temperature*(elite_value - max_value))
-		score = score / score.sum(0)
+		score = score / (score.sum(0)+ 1e-6)
 
 		tau = 0.5 if eval_mode else 1.0
 		rand_idx = math.gumbel_softmax_sample(score.squeeze(1),temperature=tau)  # gumbel_softmax_sample is compatible with cuda graphs
