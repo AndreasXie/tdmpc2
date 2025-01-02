@@ -296,7 +296,8 @@ class TDMPC2(torch.nn.Module):
 		# 5) Multi-step MPPI / random-shooting iterations
 		for iteration in range(self.cfg.iterations):
 			# (b) Sample the rest from current prob_action
-			dist = Categorical(prob_action)  
+			norm_prob = torch.softmax(prob_action - prob_action.max(dim=1,keepdim=True).values, dim=-1)
+			dist = Categorical(probs=norm_prob)  
 			actions_sample = dist.sample((self.cfg.num_samples - self.cfg.num_pi_trajs,))  # shape: (N-num_pi, T)
 			actions_sample = actions_sample.t()  # shape: (T, N-num_pi)
 			actions[:, self.cfg.num_pi_trajs:] = math.int_to_one_hot(actions_sample, self.cfg.action_dim)
@@ -308,7 +309,7 @@ class TDMPC2(torch.nn.Module):
 			# (d) Evaluate
 			value = torch.exp(self._estimate_value(z, actions, task).nan_to_num(0) + 1e-6)
 
-			importance_dist = (actions.permute(1,0,2) - prob_action).permute(1,0,2)
+			importance_dist = (actions.permute(1,0,2) - norm_prob).permute(1,0,2)
 
 			weighted_value = value * importance_dist
 
@@ -329,17 +330,15 @@ class TDMPC2(torch.nn.Module):
 
 			# (h) Blend with old distribution
 			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.2
-			
 			prob_action = prob_action + alpha * new_prob 
-
-			prob_action = prob_action - prob_action.min(dim=1, keepdim=True).values + 1e-6
 
 			# (i) Add Dirichlet noise for exploration
 			# dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.cfg.dirichlet_alpha]*new_prob.shape[-1]*self.cfg.horizon)).sample().to(self.device).reshape(self.cfg.horizon, self.cfg.action_dim)
 			# prob_action= (1 - self.cfg.explore_frac) * prob_action+ self.cfg.explore_frac * dirichlet_noise
 
 		# 6) After finishing all iterations, pick or sample the first action
-		dist = Categorical(prob_action)  
+		norm_prob = torch.softmax(prob_action - prob_action.max(dim=1,keepdim=True).values, dim=-1)
+		dist = Categorical(probs=norm_prob)  
 		actions_sample = dist.sample((self.cfg.num_samples - self.cfg.num_pi_trajs,))  # shape: (N-num_pi, T)
 		actions_sample = actions_sample.t()  # shape: (T, N-num_pi)
 		actions[:, self.cfg.num_pi_trajs:] = math.int_to_one_hot(actions_sample, self.cfg.action_dim)
