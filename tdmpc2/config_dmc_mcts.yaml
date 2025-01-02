@@ -2,7 +2,7 @@ defaults:
     - override hydra/launcher: submitit_local
 
 # environment
-task: acrobot-swingup
+task: cup-spin
 obs: state
 action: multistep_randomshooting #multistep_randomshooting discrete, continuous, mcts
 task_platform: dmcontrol
@@ -73,7 +73,7 @@ dropout: 0.05
 simnorm_dim: 8
 
 # logging
-wandb_project: dmc_discrete
+wandb_project: discrete_dmc
 wandb_entity: yux076-ucsd
 wandb_silent: false
 enable_wandb: false
