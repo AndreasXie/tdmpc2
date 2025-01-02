@@ -287,15 +287,14 @@ class TDMPC2(torch.nn.Module):
 			else:
 				prob_action = torch.full((self.cfg.horizon, self.cfg.action_dim),
 										1.0 / self.cfg.action_dim, device=self.device)
+				
+		actions = torch.empty(self.cfg.horizon, self.cfg.num_samples, self.cfg.action_dim, device=self.device)
+					# (a) Fill in policy trajectories if any
+		if self.cfg.num_pi_trajs > 0:
+			actions[:, :self.cfg.num_pi_trajs] = pi_actions
 
 		# 5) Multi-step MPPI / random-shooting iterations
 		for iteration in range(self.cfg.iterations):
-			actions = torch.empty(self.cfg.horizon, self.cfg.num_samples, self.cfg.action_dim, device=self.device)
-
-			# (a) Fill in policy trajectories if any
-			if self.cfg.num_pi_trajs > 0:
-				actions[:, :self.cfg.num_pi_trajs] = pi_actions
-
 			# (b) Sample the rest from current prob_action
 			dist = Categorical(prob_action)  
 			actions_sample = dist.sample((self.cfg.num_samples - self.cfg.num_pi_trajs,))  # shape: (N-num_pi, T)
@@ -307,37 +306,41 @@ class TDMPC2(torch.nn.Module):
 				actions = actions * self.model._action_masks[task]
 
 			# (d) Evaluate
-			value = self._estimate_value(z, actions, task).nan_to_num(0) + 1e-6
+			value = torch.exp(self._estimate_value(z, actions, task).nan_to_num(0) + 1e-6)
 
-			# (e) Compute weights based on all trajectories using min-max normalization
-			weights = self.cfg.temperature * (value - value.min())
-			normalized_weights = weights / (value.max() - value.min() + 1e-6)
+			importance_dist = (actions.permute(1,0,2) - prob_action).permute(1,0,2)
 
-			# (f) Compute weighted counts
-			weighted_counts = torch.log((actions * normalized_weights + 1.).sum(dim=1))  # shape: (T, A)
+			weighted_value = value * importance_dist
 
-			# (g) Convert counts to probabilities
-			new_prob = weighted_counts + 1e-6
-			new_prob = new_prob / new_prob.sum(dim=-1, keepdim=True)
+			new_prob = weighted_value.sum(dim=1) / value.sum()
+
+			# # (e) Compute weights based on all trajectories using min-max normalization
+			# weights = self.cfg.temperature * (value - value.max())
+			# normalized_weights = F.softmax(weights, dim=1)
+
+			# # (f) Compute weighted counts
+			# importance_dist = (actions.permute(1,0,2) - prob_action).permute(1,0,2)
+			# importance_weights = importance_dist * normalized_weights + 1e-6
+			# weighted_counts = (importance_weights).sum(dim=1)  # shape: (T, A)
+
+			# # (g) Convert counts to probabilities
+			# new_prob = weighted_counts + 1e-6
+			# new_prob = new_prob / (normalized_weights.sum(dim=-1, keepdim=True))
 
 			# (h) Blend with old distribution
 			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.5
-			prob_action = (1 - alpha) * prob_action + alpha * new_prob
+			
+			prob_action = prob_action + alpha * new_prob 
 
-			dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.cfg.dirichlet_alpha]*new_prob.shape[-1]*self.cfg.horizon)).sample().to(self.device).reshape(self.cfg.horizon, self.cfg.action_dim)
-			new_prob= (1 - self.cfg.explore_frac) * new_prob+ self.cfg.explore_frac * dirichlet_noise
-
-			# (h) Blend with old distribution
-			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.5
-			prob_action = (1 - alpha) * prob_action + alpha * new_prob
+			# (i) Add Dirichlet noise for exploration
+			# dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.cfg.dirichlet_alpha]*new_prob.shape[-1]*self.cfg.horizon)).sample().to(self.device).reshape(self.cfg.horizon, self.cfg.action_dim)
+			# prob_action= (1 - self.cfg.explore_frac) * prob_action+ self.cfg.explore_frac * dirichlet_noise
 
 		# 6) After finishing all iterations, pick or sample the first action
 		dist = Categorical(prob_action)  
 		actions_sample = dist.sample((self.cfg.num_samples - self.cfg.num_pi_trajs,))  # shape: (N-num_pi, T)
 		actions_sample = actions_sample.t()  # shape: (T, N-num_pi)
 		actions[:, self.cfg.num_pi_trajs:] = math.int_to_one_hot(actions_sample, self.cfg.action_dim)
-		if self.cfg.num_pi_trajs > 0:
-			actions[:, :self.cfg.num_pi_trajs] = pi_actions
 
 		# Compute elite actions
 		value = self._estimate_value(z, actions, task).nan_to_num(0)
@@ -348,7 +351,9 @@ class TDMPC2(torch.nn.Module):
 		max_value = elite_value.max(0).values
 		score = torch.exp(self.cfg.temperature*(elite_value - max_value))
 		score = score / score.sum(0)
-		rand_idx = math.gumbel_softmax_sample(score.squeeze(1),temperature=2.0)  # gumbel_softmax_sample is compatible with cuda graphs
+
+		tau = 0.5 if eval_mode else 1.0
+		rand_idx = math.gumbel_softmax_sample(score.squeeze(1),temperature=tau)  # gumbel_softmax_sample is compatible with cuda graphs
 		actions = torch.index_select(elite_actions, 1, rand_idx).squeeze(1)
 		entropy = dist.entropy()
 

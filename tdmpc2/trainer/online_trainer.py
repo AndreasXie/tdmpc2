@@ -71,7 +71,6 @@ class OnlineTrainer(Trainer):
 		train_metrics, done, eval_next = {}, True, False
 		prob_entropy = 0
 		while self._step <= self.cfg.steps:
-			prob_entropy = 0
 			# Evaluate agent periodically
 			if self._step % self.cfg.eval_freq == 0:
 				eval_next = True
@@ -99,7 +98,7 @@ class OnlineTrainer(Trainer):
 
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
-				action,prob_entropy = self.agent.act(obs, t0=len(self._tds)==1)
+				action, prob_entropy = self.agent.act(obs, t0=len(self._tds)==1)
 				action = action.squeeze(0)
 			else:
 				action = self.env.rand_act()
