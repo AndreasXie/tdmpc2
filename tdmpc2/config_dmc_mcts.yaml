@@ -40,7 +40,7 @@ reset_percent: 1.0
 
 # planning
 mpc: true
-iterations: 6
+iterations: 12
 num_samples: 512
 num_elites: 64
 num_pi_trajs: 24
