@@ -328,9 +328,11 @@ class TDMPC2(torch.nn.Module):
 			# new_prob = new_prob / (normalized_weights.sum(dim=-1, keepdim=True))
 
 			# (h) Blend with old distribution
-			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.5
+			alpha = self.cfg.mppi_alpha if hasattr(self.cfg, 'mppi_alpha') else 0.2
 			
 			prob_action = prob_action + alpha * new_prob 
+
+			prob_action = prob_action - prob_action.min(dim=1, keepdim=True).values + 1e-6
 
 			# (i) Add Dirichlet noise for exploration
 			# dirichlet_noise = torch.distributions.Dirichlet(torch.tensor([self.cfg.dirichlet_alpha]*new_prob.shape[-1]*self.cfg.horizon)).sample().to(self.device).reshape(self.cfg.horizon, self.cfg.action_dim)

@@ -34,9 +34,9 @@ exp_name: mcts_muzero
 data_dir: ???
 device: cuda:1
 replay_ratio: 16
-reset_interval: 2500
+reset_interval: 20_000
 reset_layers: 2
-reset_percent: 0.5
+reset_percent: 1.0
 
 # planning
 mpc: true
@@ -69,7 +69,7 @@ mlp_dim: 512
 latent_dim: 512
 task_dim: 96
 num_q: 5
-dropout: 0.01
+dropout: 0.05
 simnorm_dim: 8
 
 # logging
