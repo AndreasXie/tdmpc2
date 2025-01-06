@@ -25,20 +25,21 @@ class OnlineTrainer(Trainer):
 
 	def eval(self):
 		"""Evaluate a TD-MPC2 agent."""
-		ep_rewards, ep_successes = [], []
+		ep_rewards, ep_successes, ep_kl_div = [], [], []
 		for i in range(self.cfg.eval_episodes):
 			obs, done, ep_reward, t = self.env.reset(), False, 0, 0
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
 				torch.compiler.cudagraph_mark_step_begin()
-				action,_ = self.agent.act(obs, t0=t==0, eval_mode=True)	
+				action,_,kl_div = self.agent.act(obs, t0=t==0, eval_mode=True)	
 				action = action.squeeze(0)
 				obs, reward, done, info = self.env.step(action)
 				ep_reward += reward
 				t += 1
 				if self.cfg.save_video:
 					self.logger.video.record(self.env)
+				ep_kl_div.append(kl_div.cpu().numpy())
 			ep_rewards.append(ep_reward)
 			ep_successes.append(info['success'])
 			if self.cfg.save_video:
@@ -46,6 +47,7 @@ class OnlineTrainer(Trainer):
 		return dict(
 			episode_reward=np.nanmean(ep_rewards),
 			episode_success=np.nanmean(ep_successes),
+			kl_div=np.nanmean(ep_kl_div)
 		)
 
 	def to_td(self, obs, action=None, reward=None):
@@ -98,9 +100,10 @@ class OnlineTrainer(Trainer):
 
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
-				action, prob_entropy = self.agent.act(obs, t0=len(self._tds)==1)
+				action, prob_entropy, _ = self.agent.act(obs, t0=len(self._tds)==1)
 				action = action.squeeze(0)
 			else:
+				_, _, _ = self.agent.act(obs, t0=len(self._tds)==1) #Just for collecting norm stats	
 				action = self.env.rand_act()
 			if self.cfg.action == 'discrete' or self.cfg.action == 'multistep_randomshooting':
 				# exploration schedule

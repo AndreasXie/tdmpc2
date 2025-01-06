@@ -5,7 +5,7 @@ from tensordict import TensorDict
 def weight_init(m):
 	"""Custom weight initialization for TD-MPC2."""
 	if isinstance(m, nn.Linear):
-		nn.init.trunc_normal_(m.weight, std=0.02)
+		nn.init.kaiming_normal_(m.weight)
 		if m.bias is not None:
 			nn.init.constant_(m.bias, 0)
 	elif isinstance(m, nn.Embedding):
@@ -13,7 +13,7 @@ def weight_init(m):
 	elif isinstance(m, nn.ParameterList):
 		for i,p in enumerate(m):
 			if p.dim() == 3: # Linear
-				nn.init.trunc_normal_(p, std=0.02) # Weight
+				nn.init.kaiming_normal_(m.weight)
 				nn.init.constant_(m[i+1], 0) # Bias
 	elif isinstance(m, TensorDict):
 		reset_parameters(m)
@@ -21,7 +21,7 @@ def weight_init(m):
 # Reset function for weight initialization
 def _weight_init(m):
     if isinstance(m, torch.Tensor):
-        nn.init.trunc_normal_(m, std=0.02)
+        nn.init.kaiming_normal_(m.weight)
 
 # Function to reset parameters
 def reset_parameters(parameters):

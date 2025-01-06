@@ -113,7 +113,32 @@ class NormedLinear(nn.Linear):
 			f"bias={self.bias is not None}{repr_dropout}, "\
 			f"act={self.act.__class__.__name__})"
 
+class ResidualBlock(nn.Module):
 
+    def __init__(self, hidden_dim: int, dropout: float = 0., act = None, dtype = torch.float32):
+
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.dtype = dtype
+        self.dropout = dropout
+        if act is None:
+            act = nn.Mish(inplace=False)
+
+        self.fc1 = NormedLinear(hidden_dim, 4 * hidden_dim, dropout=dropout, act=act)
+        self.fc2 = NormedLinear(4 * hidden_dim, hidden_dim, dropout=dropout, act=act)
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.to(self.dtype)
+        residual = x
+        out = self.fc1(x)
+        out = self.fc2(out)
+        return residual + out
+
+    def __repr__(self):
+        return (f"{self.__class__.__name__}(hidden_dim={self.hidden_dim}, "
+                f"\n fc1={self.fc1},\n fc2={self.fc2})")
+	
 def mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0.):
 	"""
 	Basic building block of TD-MPC2.
@@ -128,6 +153,25 @@ def mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0.):
 	mlp.append(NormedLinear(dims[-2], dims[-1], act=act) if act else nn.Linear(dims[-2], dims[-1]))
 	return nn.Sequential(*mlp)
 
+def res_mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0.) -> nn.Sequential:
+
+    if isinstance(mlp_dims, int):
+        mlp_dims = [mlp_dims]
+    
+    dims = [in_dim] + mlp_dims + [out_dim]
+    mlp = nn.ModuleList()
+
+    # ResidualBlock, 1 residual block for 2 layers
+    for i in range(0, len(dims) - 2, 2):
+        mlp.append(ResidualBlock(hidden_dim=dims[i], dropout=dropout))
+    
+    # 输出层：使用 NormedLinear 或标准 Linear
+    if act:
+        mlp.append(NormedLinear(dims[0], dims[-1], act=act))
+    else:
+        mlp.append(nn.Linear(dims[0], dims[-1]))
+    
+    return nn.Sequential(*mlp)
 
 def conv(in_shape, num_channels, act=None):
 	"""
@@ -184,7 +228,12 @@ def enc(cfg, out={}):
 	"""
 	for k in cfg.obs_shape.keys():
 		if k == 'state':
-			out[k] = mlp(cfg.obs_shape[k][0] + cfg.task_dim, max(cfg.num_enc_layers-1, 1)*[cfg.enc_dim], cfg.latent_dim, act=SimNorm(cfg))
+			if not cfg.simba:
+				out[k] = mlp(cfg.obs_shape[k][0] + cfg.task_dim, max(cfg.num_enc_layers-1, 1)*[cfg.enc_dim], cfg.latent_dim, act=SimNorm(cfg))
+			else:
+				post_layer = res_mlp(cfg.enc_dim, max(cfg.num_enc_layers-1, 1)*[cfg.enc_dim], cfg.latent_dim, act=SimNorm(cfg))
+				post_layer.insert(0, NormedLinear(cfg.obs_shape[k][0] + cfg.task_dim, cfg.enc_dim, act=nn.Mish(inplace=False)))
+				out[k] = post_layer
 		elif k == 'rgb':
 			if cfg.task_platform != 'atari':
 				out[k] = conv(cfg.obs_shape[k], cfg.num_channels, act=SimNorm(cfg))
