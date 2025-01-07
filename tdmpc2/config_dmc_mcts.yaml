@@ -116,6 +116,6 @@ c_1: 1.25                  # for muzero
 value_minmax_delta: 1e-6      
 vis: [log]       
 dirichlet_alpha: 0.3          
-explore_frac: 0.25            
+explore_frac: 0.25
 mcts_temperature: 1.0    
 reanalyze: false

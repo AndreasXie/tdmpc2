@@ -230,7 +230,7 @@ class TDMPC2(torch.nn.Module):
 
 			# (d) Evaluate Compute advantage value of each trajectory
 			values = self._estimate_value(z, actions, task).nan_to_num(0)
-			values = values - values.mean()
+			# values = values - values.mean()
 			value = torch.exp(values - values.max())
 
 			if self.cfg.gradient:
