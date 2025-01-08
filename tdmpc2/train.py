@@ -56,7 +56,7 @@ def cfg_to_dataclass(cfg, frozen=False):
 	dataclass.get = get
 	return dataclass()
 
-@hydra.main(config_name='config_dmc_mcts', config_path='.')
+@hydra.main(config_name='config_atari_mcts', config_path='.')
 def train(cfg: dict):
 	"""
 	Script for training single-task / multi-task TD-MPC2 agents.

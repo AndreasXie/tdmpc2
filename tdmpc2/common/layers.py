@@ -199,6 +199,7 @@ def res_mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0.) -> nn.Sequential:
     for i in range(0, len(dims) - 2, 2):
         mlp.append(ResidualBlock(hidden_dim=dims[i], dropout=dropout))
 
+    #post norm
     mlp.append(nn.LayerNorm(dims[0]))
     if act:
         mlp.append(NormedLinear(dims[0], dims[-1], act=act))

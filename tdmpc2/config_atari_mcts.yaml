@@ -18,9 +18,17 @@ resize: 96
 noop: 30
 action: multistep_randomshooting #multistep_randomshooting #discrete, continuous, mcts
 discount: 0.997
-pretrain_steps: 1000
+pretrain_steps: 10
 downsample: false
 video: true
+
+#development
+rs_argmax: true
+gradient: false
+alpha: 0.3
+eval_perf: true
+simba: true
+rsnorm: true
 
 # evaluation
 checkpoint: ???
@@ -47,7 +55,7 @@ discount_max: 0.995
 buffer_size: 1_000_000
 exp_name: mcts_muzero
 data_dir: ???
-device: cuda:1
+device: cuda:0
 replay_ratio: 8
 reset_interval: 10
 reset_layers: 2
