@@ -29,6 +29,10 @@ alpha: 0.3
 eval_perf: true
 simba: true
 rsnorm: true
+replay_ratio: 1
+reset_interval: 20_000
+reset_layers: 2
+reset_percent: 0.5
 
 # evaluation
 checkpoint: ???
@@ -56,10 +60,6 @@ buffer_size: 1_000_000
 exp_name: mcts_muzero
 data_dir: ???
 device: cuda:0
-replay_ratio: 8
-reset_interval: 10
-reset_layers: 2
-reset_percent: 0.2
 
 # planning
 mpc: true

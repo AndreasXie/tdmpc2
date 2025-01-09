@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from tensordict import from_modules
 from copy import deepcopy
 from .downsample import conv3x3, ResidualBlock, DownSample
+from .impala import ImpalaCNN, ConvTMCell
 
 class Ensemble(nn.Module):
     """
@@ -54,6 +55,61 @@ class ShiftAug(nn.Module):
         grid = base_grid + shift
         return F.grid_sample(x, grid, padding_mode='zeros', align_corners=False)
 
+
+class ImagePreprocessor(nn.Module):
+    """
+    图像预处理模块，包括归一化和可选的数据增强（填充、随机裁剪和强度扰动）。
+
+    Args:
+        data_augmentation (bool): 是否应用数据增强。
+        dtype (torch.dtype): 数据类型，默认为 torch.float32。
+        img_pad (int): 填充的像素数，默认为 4。
+        scale (float): 强度扰动的缩放因子，默认为 0.05。
+    """
+    def __init__(self, data_augmentation=False, dtype=torch.float32, img_pad=4, scale=0.05):
+        super(ImagePreprocessor, self).__init__()
+        self.data_augmentation = data_augmentation
+        self.dtype = dtype
+        self.img_pad = img_pad
+        self.scale = scale
+
+    def forward(self, x):
+        """
+        前向传播。
+
+        Args:
+            x (torch.Tensor): 输入张量，形状为 (batch_size, channels, height, width)。
+
+        Returns:
+            torch.Tensor: 预处理后的张量，形状与输入相同。
+        """
+        # 输入归一化
+        x = x.to(self.dtype) / 255.0
+
+        if self.data_augmentation:
+            # 填充图像
+            x_padded = F.pad(x, (self.img_pad, self.img_pad, self.img_pad, self.img_pad), mode='replicate')  # (B, C, H+2P, W+2P)
+            B, C, H_p, W_p = x_padded.shape
+            H, W = H_p - 2 * self.img_pad, W_p - 2 * self.img_pad
+
+            # 生成每个图像的随机偏移量
+            offset_x = torch.randint(0, 2 * self.img_pad + 1, (B,), device=x.device)
+            offset_y = torch.randint(0, 2 * self.img_pad + 1, (B,), device=x.device)
+
+            # 初始化一个空的张量来存储裁剪后的图像
+            cropped = torch.empty((B, C, H, W), device=x.device, dtype=x.dtype)
+
+            # 对每个图像进行裁剪
+            for i in range(B):
+                cropped[i] = x_padded[i, :, offset_x[i]:offset_x[i] + H, offset_y[i]:offset_y[i] + W]
+
+            # 强度扰动
+            noise = 1.0 + self.scale * torch.clamp(torch.randn(B, 1, 1, 1, device=x.device), -2.0, 2.0)
+            cropped = cropped * noise
+
+            x = cropped
+
+        return x
 
 class PixelPreprocess(nn.Module):
     """
@@ -230,7 +286,7 @@ def conv_atari(in_shape, num_channels, act=None):
     4 layers of convolution with ReLU activations, followed by a linear layer.
     """
     layers = [
-        PixelPreprocess(),
+        ImagePreprocessor(),
         nn.Conv2d(in_shape, num_channels, 7, stride=2, padding=3), nn.ReLU(inplace=False),#hard code for grayscale
         nn.Conv2d(num_channels, num_channels, 5, stride=2, padding=2), nn.ReLU(inplace=False),
         nn.Conv2d(num_channels, num_channels, 3, stride=2, padding=1), nn.ReLU(inplace=False),
@@ -238,6 +294,24 @@ def conv_atari(in_shape, num_channels, act=None):
 
     if act:
         layers.append(act)
+    return nn.Sequential(*layers)
+
+def impala_atari(in_shape, num_channels):
+    layers = [
+        ImagePreprocessor(),
+		ImpalaCNN(in_shape, num_channels, 16)
+        ]
+    return nn.Sequential(*layers)
+        
+def projection_layer(in_dim, out_dim, act=None):
+    """
+	Basic projection layer for TD-MPC2.
+	Linear layer with LayerNorm, Mish activations, and optionally dropout.
+	"""
+    layers = [
+        nn.Flatten(),
+		NormedLinear(in_dim, out_dim, act=act)
+		]
     return nn.Sequential(*layers)
 
 def conv_atari_downsample(in_shape, num_channels, reduced_channels=16 , act=None):

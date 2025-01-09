@@ -128,7 +128,7 @@ class OnlineTrainer(Trainer):
 
 			# Update agent
 			if self._step >= self.cfg.pretrain_steps and enough_train:
-				if self._step*self.reset_ratio % self.cfg.reset_interval == 0:
+				if self._step*self.cfg.replay_ratio % self.cfg.reset_interval == 0:
 					self.agent.reset_parameters()
 
 				for _ in range(self.cfg.replay_ratio):
