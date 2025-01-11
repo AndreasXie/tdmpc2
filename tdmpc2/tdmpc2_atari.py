@@ -449,7 +449,6 @@ class TDMPC2(torch.nn.Module):
 		return td_targets
 
 	def _update(self, obs, action, reward, task=None, done = None):
-		done = done[-1]
 		# Compute targets
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
@@ -473,7 +472,7 @@ class TDMPC2(torch.nn.Module):
 		_zs = zs[:-1]
 		qs = self.model.Q(_zs, action, task, return_type='all')
 		reward_preds = self.model.reward(_zs, action, task)
-		terminated_pred = self.model.terminated(zs[-1], task)
+		terminated_pred = self.model.terminated(_zs, task)
 
 		# Compute losses
 		reward_loss, value_loss = 0, 0
@@ -537,10 +536,10 @@ class TDMPC2(torch.nn.Module):
 		# 计算折扣累积奖励
 		discounted_rewards = torch.zeros_like(rewards[0])
 		terminated = torch.zeros(dones.shape[1], 1, dtype=torch.float32, device=dones.device)
-		terminated = dones[0]
 		for k in range(n_step):
-			discounted_rewards += (gamma ** k) * rewards[k]
-			discounted_rewards = discounted_rewards * (1 - terminated)
+			# 只有在之前未终止的情况下，才累加当前步的奖励
+			discounted_rewards += (gamma ** k) * rewards[k] * (1 - terminated)
+			# 更新终止标志
 			terminated = torch.clip_(terminated + dones[k], max=1.)
 
 		# 获取n步后的潜在状态
@@ -565,7 +564,7 @@ class TDMPC2(torch.nn.Module):
 		min_q_next_target = min_q_next_target.sum(dim=1, keepdim=True)
 
 		# 计算n步TD目标
-		td_targets = discounted_rewards + (gamma ** n_step) * min_q_next_target * (1 - dones[-1])
+		td_targets = discounted_rewards + (gamma ** n_step) * min_q_next_target * (1 - terminated)
 
 		return td_targets
 
@@ -598,7 +597,7 @@ class TDMPC2(torch.nn.Module):
 		
 		# Compute losses
 		reward_loss, value_loss = 0, 0
-		for t, (rew_pred_unbind, rew_unbind, td_targets_unbind, qs_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0), td_targets.unbind(0), qs.unbind(1))):
+		for t, (rew_pred_unbind, rew_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0))):
 			reward_loss = reward_loss + math.soft_ce(rew_pred_unbind, rew_unbind, self.cfg).mean() * self.cfg.rho**t
 
 		for i in range(self.cfg.num_q):
