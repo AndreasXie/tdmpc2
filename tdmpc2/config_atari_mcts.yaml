@@ -30,8 +30,8 @@ alpha: 0.3
 eval_perf: false
 simba: false
 rsnorm: false
-replay_ratio: 2
-reset_interval: 20_000
+replay_ratio: 1
+reset_interval: 108_000
 reset_layers: 2
 reset_percent: 0.2
 terminated_coef: 0.1
@@ -40,7 +40,7 @@ n_step_return: false
 
 # evaluation
 checkpoint: ???
-eval_episodes: 1
+eval_episodes: 10
 eval_freq: 10000
 
 # training
