@@ -449,6 +449,7 @@ class TDMPC2(torch.nn.Module):
 		return td_targets
 
 	def _update(self, obs, action, reward, task=None, done = None):
+		done = done[-1]
 		# Compute targets
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
@@ -463,7 +464,6 @@ class TDMPC2(torch.nn.Module):
 
 		zs[0] = z
 		consistency_loss = 0
-		continuity_loss = 0
 		for t, (_action, _next_h) in enumerate(zip(action.unbind(0), next_z.unbind(0))):
 			z = self.model.next(z, _action, task)
 			consistency_loss = consistency_loss - torch.cosine_similarity(z, _next_h).mean() * self.cfg.rho**t

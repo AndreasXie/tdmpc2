@@ -84,7 +84,7 @@ class ImagePreprocessor(nn.Module):
             torch.Tensor: 预处理后的张量，形状与输入相同。
         """
         # 输入归一化
-        x = x.to(self.dtype) / 255.0
+        x = x.to(self.dtype) / 255.0 - 0.5
 
         if self.data_augmentation:
             # 填充图像
