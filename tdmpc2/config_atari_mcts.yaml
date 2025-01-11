@@ -8,35 +8,39 @@ task_platform: atari
 has_done: true
 
 #only for atari
-gray_scale: false
+gray_scale: true
 obs_to_string: true
 n_skip: 4
+frame_stack: 4
 max_episode_steps: 108_000
 episode_life: true
 clip_rewards: true
-resize: 96
+resize: 84
 noop: 30
 action: multistep_randomshooting #multistep_randomshooting #discrete, continuous, mcts
 discount: 0.997
-pretrain_steps: 10
+pretrain_steps: 2000
 downsample: false
 video: true
 
 #development
 rs_argmax: true
-gradient: false
+gradient: true
 alpha: 0.3
 eval_perf: true
-simba: true
-rsnorm: true
-replay_ratio: 1
+simba: false
+rsnorm: false
+replay_ratio: 2
 reset_interval: 20_000
 reset_layers: 2
-reset_percent: 0.5
+reset_percent: 0.2
+terminated_coef: 0.1
+n_step: 20
+n_step_return: true
 
 # evaluation
 checkpoint: ???
-eval_episodes: 10
+eval_episodes: 1
 eval_freq: 10000
 
 # training
@@ -59,7 +63,7 @@ discount_max: 0.995
 buffer_size: 1_000_000
 exp_name: mcts_muzero
 data_dir: ???
-device: cuda:0
+device: cuda:1
 
 # planning
 mpc: true

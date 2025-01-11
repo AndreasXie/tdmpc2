@@ -66,7 +66,7 @@ class ImagePreprocessor(nn.Module):
         img_pad (int): 填充的像素数，默认为 4。
         scale (float): 强度扰动的缩放因子，默认为 0.05。
     """
-    def __init__(self, data_augmentation=False, dtype=torch.float32, img_pad=4, scale=0.05):
+    def __init__(self, data_augmentation=True, dtype=torch.float32, img_pad=4, scale=0.05):
         super(ImagePreprocessor, self).__init__()
         self.data_augmentation = data_augmentation
         self.dtype = dtype
@@ -287,32 +287,31 @@ def conv_atari(in_shape, num_channels, act=None):
     """
     layers = [
         ImagePreprocessor(),
-        nn.Conv2d(in_shape, num_channels, 7, stride=2, padding=3), nn.ReLU(inplace=False),#hard code for grayscale
-        nn.Conv2d(num_channels, num_channels, 5, stride=2, padding=2), nn.ReLU(inplace=False),
-        nn.Conv2d(num_channels, num_channels, 3, stride=2, padding=1), nn.ReLU(inplace=False),
+        nn.Conv2d(in_shape, num_channels, 7, stride=2, padding=3), nn.ReLU(inplace=True),#hard code for grayscale
+        nn.Conv2d(num_channels, num_channels, 5, stride=2, padding=2), nn.ReLU(inplace=True),
+        nn.Conv2d(num_channels, num_channels, 3, stride=2, padding=1), nn.ReLU(inplace=True),
         nn.Conv2d(num_channels, num_channels, 3,stride=3, padding=1), nn.Flatten()]
 
     if act:
         layers.append(act)
     return nn.Sequential(*layers)
 
-def impala_atari(in_shape, num_channels):
+def impala_atari(in_shape):
     layers = [
         ImagePreprocessor(),
-		ImpalaCNN(in_shape, num_channels, 16)
+		ImpalaCNN(in_channels=4)
         ]
     return nn.Sequential(*layers)
-        
-def projection_layer(in_dim, out_dim, act=None):
+
+def impala_dynamic(action_dim, in_channels=32):
+    return ConvTMCell(action_dim, in_channels, in_channels)
+
+def projection_layer(out_dim=2048, in_dim=1152, act=None):
     """
 	Basic projection layer for TD-MPC2.
 	Linear layer with LayerNorm, Mish activations, and optionally dropout.
 	"""
-    layers = [
-        nn.Flatten(),
-		NormedLinear(in_dim, out_dim, act=act)
-		]
-    return nn.Sequential(*layers)
+    return NormedLinear(in_dim, out_dim, act=act)
 
 def conv_atari_downsample(in_shape, num_channels, reduced_channels=16 , act=None):
     """
@@ -344,8 +343,9 @@ def enc(cfg, out={}):
                 post_layer.insert(0, NormedLinear(cfg.obs_shape[k][0] + cfg.task_dim, cfg.enc_dim, act=nn.Mish(inplace=False)))
                 out[k] = post_layer
         elif k == 'rgb':
-            if cfg.task_platform != 'atari':
-                out[k] = conv(cfg.obs_shape[k], cfg.num_channels, act=SimNorm(cfg))
+            if cfg.task_platform == 'atari':
+                # out[k] = impala_atari(cfg.obs_shape[k])
+                out[k] = conv_atari(4 if cfg.gray_scale else 12, cfg.num_channels, act=SimNorm(cfg))
             else:
                 if cfg.downsample:
                     out[k] = conv_atari_downsample(4 if cfg.gray_scale else 12, cfg.num_channels, act=SimNorm(cfg))

@@ -25,29 +25,19 @@ class WorldModel(nn.Module):
 				self._action_masks[i, :cfg.action_dims[i]] = 1.
 		if not cfg.simba:
 			self._encoder = layers.enc(cfg)
-
-			if cfg.task_platform == 'atari':
-				self._dynamics = layers.impala_dynamic(cfg.action_dim)
-				self._proj = layers.projection_layer(out_dim=cfg.latent_dim, act=layers.SimNorm(cfg))
-				self._continuity = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, [cfg.mlp_dim], 2)
-			else:
-				self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
+			self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
+			self._termination = layers.mlp(cfg.latent_dim + cfg.task_dim, [cfg.mlp_dim], 1)
 
 			self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
-			self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim if cfg.action == 'continuous' else cfg.action_dim)
+			self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.action_dim)
 			self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
 		else:
 			self._encoder = layers.enc(cfg)
-
-			if cfg.task_platform == 'atari':
-				self._dynamics = layers.impala_dynamic(cfg.action_dim)
-				self._proj = layers.projection_layer(out_dim=cfg.latent_dim, act=layers.SimNorm(cfg))
-				self._continuity = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, [cfg.mlp_dim], 2)
-			else:
-				self._dynamics = layers.res_mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
+			self._dynamics = layers.res_mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
+			self._termination = layers.res_mlp(cfg.latent_dim + cfg.task_dim, [cfg.mlp_dim], 1)
 
 			self._reward = layers.res_mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
-			self._pi = layers.res_mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim if cfg.action == 'continuous' else cfg.action_dim)
+			self._pi = layers.res_mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.action_dim)
 			self._Qs = layers.Ensemble([layers.res_mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
 		
 		self.apply(init.weight_init)
@@ -73,16 +63,11 @@ class WorldModel(nn.Module):
 
 	def __repr__(self):
 		repr = 'TD-MPC2 World Model\n'
-		if self.cfg.task_platform == 'atari':
-			modules = ['Encoder', 'Dynamics', 'Projection', 'Reward', 'Policy prior', 'Q-functions']
-			for i, m in enumerate([self._encoder, self._dynamics, self._proj, self._reward, self._pi, self._Qs]):
-				repr += f"{modules[i]}: {m}\n"
-			repr += "Learnable parameters: {:,}".format(self.total_params)
-		else:
-			modules = ['Encoder', 'Dynamics', 'Reward', 'Policy prior', 'Q-functions']
-			for i, m in enumerate([self._encoder, self._dynamics, self._reward, self._pi, self._Qs]):
-				repr += f"{modules[i]}: {m}\n"
-			repr += "Learnable parameters: {:,}".format(self.total_params)
+		modules = ['Encoder', 'Dynamics', 'Termination', 'Reward', 'Policy prior', 'Q-functions']
+		for i, m in enumerate([self._encoder, self._dynamics, self._termination, self._reward, self._pi, self._Qs]):
+			repr += f"{modules[i]}: {m}\n"
+		repr += "Learnable parameters: {:,}".format(self.total_params)
+
 		return repr
 
 	@property
@@ -134,16 +119,13 @@ class WorldModel(nn.Module):
 			return torch.stack([self._encoder[self.cfg.obs](o) for o in obs])
 		return self._encoder[self.cfg.obs](obs)
 	
-	def projection(self, z):
+	def terminated(self, z, task):
 		"""
-		Projects a latent state into a lower-dimensional space.
+		Predicts the termination probability given the current latent state and action.
 		"""
-		if z.ndim == 5:
-			z = nn.Flatten(2)(z)
-		else:
-			z = nn.Flatten(1)(z)
-		return self._proj(z)
-
+		if self.cfg.multitask:
+			z = self.task_emb(z, task)
+		return torch.sigmoid(self._termination(z))
 
 	def next(self, z, a, task):
 		"""
@@ -151,17 +133,8 @@ class WorldModel(nn.Module):
 		"""
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
-		if self.cfg.task_platform == 'atari':
-			return self._dynamics(z, a)
 		z = torch.cat([z, a], dim=-1)
 		return self._dynamics(z)
-
-	def continuity(self, z, a, task):
-		if self.cfg.multitask:
-			z = self.task_emb(z, task)
-		z = torch.cat([z, a], dim=-1)
-		out = self._continuity(z)
-		return out.argmax(dim=1)
 
 	def reward(self, z, a, task):
 		"""
@@ -171,31 +144,6 @@ class WorldModel(nn.Module):
 			z = self.task_emb(z, task)
 		z = torch.cat([z, a], dim=-1)
 		return self._reward(z)
-
-	def _continuous_pi(self, z, task):
-		"""
-		Samples an action from the policy prior.
-		The policy prior is a Gaussian distribution with
-		mean and (log) std predicted by a neural network.
-		"""
-		# Gaussian policy prior
-		mu, log_std = self._pi(z).chunk(2, dim=-1)
-		log_std = math.log_std(log_std, self.log_std_min, self.log_std_dif)
-		eps = torch.randn_like(mu)
-
-		if self.cfg.multitask: # Mask out unused action dimensions
-			mu = mu * self._action_masks[task]
-			log_std = log_std * self._action_masks[task]
-			eps = eps * self._action_masks[task]
-			action_dims = self._action_masks.sum(-1)[task].unsqueeze(-1)
-		else: # No masking
-			action_dims = None
-
-		log_pi = math.gaussian_logprob(eps, log_std, size=action_dims)
-		pi = mu + eps * log_std.exp()
-		mu, pi, log_pi = math.squash(mu, pi, log_pi)
-
-		return mu, pi, log_pi, log_std
 
 	def _discrete_pi(self, z, task):
 		"""
@@ -230,13 +178,7 @@ class WorldModel(nn.Module):
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
 
-		if self.cfg.get('action') == 'discrete' or self.cfg.action == 'multistep_randomshooting':
-			return self._discrete_pi(z, task)
-		elif self.cfg.action == 'continuous':
-			return self._continuous_pi(z, task)
-		else:
-			raise NotImplementedError(f"Action space {self.cfg.action} not supported.")
-		
+		return self._discrete_pi(z, task)
 
 	def Q(self, z, a, task, return_type='min', target=False, detach=False):
 		"""
@@ -275,21 +217,20 @@ class WorldModel(nn.Module):
 		Reset target Q-networks.
 		"""
 		old_encoder = deepcopy(self._encoder).to("cpu")
-
+		old_dynamics = deepcopy(self._dynamics).to("cpu")
 		self._encoder = layers.enc(cfg)
-		if cfg.task_platform == 'atari':
-			old_dynamics = deepcopy(self._dynamics).to("cpu")
-			self._dynamics = layers.impala_dynamic(cfg.action_dim)
-			self._proj = layers.projection_layer(out_dim=cfg.latent_dim, act=layers.SimNorm(cfg))
-			self.continuity = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, [cfg.mlp_dim], 2, act=layers.SimNorm(cfg))
+		if cfg.simba:
+			self._dynamics = layers.res_mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
+			self._termination = layers.res_mlp(cfg.latent_dim + cfg.task_dim, [cfg.mlp_dim], 1)
+			self._reward = layers.res_mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
+			self._pi = layers.res_mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim if cfg.action == 'continuous' else cfg.action_dim)
+			self._Qs = layers.Ensemble([layers.res_mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
 		else:
 			self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
-		
-		if cfg.task_platform == 'atari':
-			self._proj = layers.projection_layer(out_dim=cfg.latent_dim, act=layers.SimNorm(cfg))
-		self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
-		self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim if cfg.action == 'continuous' else cfg.action_dim)
-		self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
+			self._termination = layers.mlp(cfg.latent_dim + cfg.task_dim, [cfg.mlp_dim], 1)
+			self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
+			self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim if cfg.action == 'continuous' else cfg.action_dim)
+			self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
 		
 		self.apply(init.weight_init)
 
@@ -304,16 +245,15 @@ class WorldModel(nn.Module):
 					elif "bias" in key:
 						new_layer_dict[key] = new_layer_dict[key]
 		#reset dynamic
-		if self.cfg.task_platform == 'atari':
-			for name, param in self._dynamics.named_parameters():
-				if param.requires_grad:
-					# 获取旧的参数
-					old_param = old_dynamics.state_dict().get(name)
-					if old_param is not None:
-						# 确保 old_param 和 param.data 在同一设备上
-						old_param = old_param.to(param.device)
-						# 线性插值: new_param = (1 - reset_percent) * old_param + reset_percent * new_param
-						param.data = (1.0 - cfg.reset_percent) * old_param + cfg.reset_percent * param.data
+		for name, param in self._dynamics.named_parameters():
+			if param.requires_grad:
+				# 获取旧的参数
+				old_param = old_dynamics.state_dict().get(name)
+				if old_param is not None:
+					# 确保 old_param 和 param.data 在同一设备上
+					old_param = old_param.to(param.device)
+					# 线性插值: new_param = (1 - reset_percent) * old_param + reset_percent * new_param
+					param.data = (1.0 - cfg.reset_percent) * old_param + cfg.reset_percent * param.data
 
 
 		init.zero_([self._reward[-1].weight, self._Qs.params["2", "weight"]])

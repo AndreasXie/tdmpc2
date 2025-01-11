@@ -12,11 +12,9 @@ from termcolor import colored
 
 from common.parser import parse_cfg
 from common.seed import set_seed
-from common.buffer import Buffer
+from common.buffer import Buffer_atari
 from envs import make_env
-from tdmpc2 import TDMPC2
-from trainer.offline_trainer import OfflineTrainer
-from trainer.online_trainer import OnlineTrainer
+from tdmpc2_atari import TDMPC2
 from trainer.online_trainer_term import OnlineTrainer as OnlineTrainerTerm
 from common.logger import Logger
 import dataclasses
@@ -56,7 +54,7 @@ def cfg_to_dataclass(cfg, frozen=False):
 	dataclass.get = get
 	return dataclass()
 
-@hydra.main(config_name='config_dmc_mcts', config_path='.')
+@hydra.main(config_name='config_atari_mcts', config_path='.')
 def train(cfg: dict):
 	"""
 	Script for training single-task / multi-task TD-MPC2 agents.
@@ -82,10 +80,7 @@ def train(cfg: dict):
 	set_seed(cfg.seed)
 	print(colored('Work dir:', 'yellow', attrs=['bold']), cfg.work_dir)
 
-	if cfg.has_done:
-		trainer_cls = OnlineTrainerTerm
-	else:
-		trainer_cls = OfflineTrainer if cfg.multitask else OnlineTrainer
+	trainer_cls = OnlineTrainerTerm
 
 	cfg = cfg_to_dataclass(cfg)
 
@@ -95,7 +90,7 @@ def train(cfg: dict):
 		cfg=cfg,
 		env=make_env(cfg),
 		agent=TDMPC2(cfg),
-		buffer=Buffer(cfg),
+		buffer=Buffer_atari(cfg),
 		logger=Logger(cfg),
 	)
 	trainer.train()

@@ -5,6 +5,7 @@ import torch
 from tensordict.tensordict import TensorDict
 from trainer.base import Trainer
 from envs import make_env
+from collections import deque
 
 class OnlineTrainer(Trainer):
 	"""Trainer class for single-task online TD-MPC2 training."""
@@ -25,7 +26,7 @@ class OnlineTrainer(Trainer):
 
 	def eval(self):
 		"""Evaluate a TD-MPC2 agent."""
-		ep_rewards, ep_successes = [], []
+		ep_rewards, ep_successes, ep_kl_div = [], [], []
 		for i in range(self.cfg.eval_episodes):
 			self.env = make_env(self.cfg)
 			self.cfg.seed = self.cfg.seed + 5
@@ -34,13 +35,14 @@ class OnlineTrainer(Trainer):
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
-				action, _, _ = self.agent.act(obs, t0=t==0, eval_mode=True)
+				action, _, kl_div = self.agent.act(obs, t0=t==0, eval_mode=True)
 				obs, reward, done, trunc, info = self.env.step(action)
 				done = info['real_done'] if self.cfg.episode_life else done
 				ep_reward += info['raw_reward'] if self.cfg.clip_rewards else reward
 				t += 1
 				if self.cfg.save_video:
 					self.logger.video.record(self.env)
+				ep_kl_div.append(kl_div.cpu().numpy())
 			ep_rewards.append(ep_reward)
 			ep_successes.append(info['success'])
 			if self.cfg.save_video:
@@ -48,6 +50,7 @@ class OnlineTrainer(Trainer):
 		return dict(
 			episode_reward=np.nanmean(ep_rewards),
 			episode_success=np.nanmean(ep_successes),
+			kl_div=np.nanmean(ep_kl_div)
 		)
 
 	def to_td(self, obs, action=None, reward=None, done=None):

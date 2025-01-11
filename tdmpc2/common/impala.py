@@ -327,7 +327,7 @@ class ConvTMCell(nn.Module):
         if self.conv2.bias is not None:
             nn.init.zeros_(self.conv2.bias)
 
-    def forward(self, x, action, eval_mode=False, key=None):
+    def forward(self, x, action):
         """
         前向传播。
 
@@ -344,7 +344,8 @@ class ConvTMCell(nn.Module):
 
         # 将动作转换为 one-hot 编码
         # 扩展为与 x 相同的空间维度
-        action_onehot = action.expand(-1, -1, height, width)  # (batch_size, num_actions, height, width)
+        action_onehot = action.view(batch_size, self.num_actions, 1, 1)
+        action_onehot = action_onehot.expand(-1, -1, height, width)  # (batch_size, num_actions, height, width)
 
         # 连接动作编码到输入张量的通道维度
         x = torch.cat([x, action_onehot], dim=1)  # 新的通道数为 in_channels + num_actions
@@ -361,7 +362,7 @@ class ConvTMCell(nn.Module):
         if self.renormalize:
             x = renormalize(x, has_batch=True)
 
-        return x, x
+        return x
     
 def test_ImpalaCNN():
     """
