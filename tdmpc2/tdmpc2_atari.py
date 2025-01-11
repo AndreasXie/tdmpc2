@@ -464,9 +464,9 @@ class TDMPC2(torch.nn.Module):
 
 		zs[0] = z
 		consistency_loss = 0
-		for t, (_action, _next_h) in enumerate(zip(action.unbind(0), next_z.unbind(0))):
+		for t, (_action, _next_z) in enumerate(zip(action.unbind(0), next_z.unbind(0))):
 			z = self.model.next(z, _action, task)
-			consistency_loss = consistency_loss - torch.cosine_similarity(z, _next_h).mean() * self.cfg.rho**t
+			consistency_loss = consistency_loss + F.mse_loss(z, _next_z) * self.cfg.rho**t
 			zs[t+1] = z
 
 		# Predictions

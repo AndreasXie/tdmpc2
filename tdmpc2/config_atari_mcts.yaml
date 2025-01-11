@@ -27,7 +27,7 @@ video: true
 rs_argmax: true
 gradient: true
 alpha: 0.3
-eval_perf: true
+eval_perf: false
 simba: false
 rsnorm: false
 replay_ratio: 2
@@ -61,7 +61,7 @@ discount_denom: 5
 discount_min: 0.95
 discount_max: 0.995
 buffer_size: 1_000_000
-exp_name: mcts_muzero
+exp_name: mrs_atari_1024
 data_dir: ???
 device: cuda:1
 
@@ -92,9 +92,9 @@ vmax: +6
 model_size: ???
 num_enc_layers: 2
 enc_dim: 256
-num_channels: 32
-mlp_dim: 512
-latent_dim: 512
+num_channels: 64
+mlp_dim: 1024
+latent_dim: 1024
 task_dim: 96
 num_q: 5
 dropout: 0.01
