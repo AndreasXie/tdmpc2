@@ -283,7 +283,7 @@ def make_atari(cfg):
     env = WarpFrame(env, width=resize, height=resize, grayscale=gray_scale) 
     env = TimeLimit(env, max_episode_steps=max_episode_steps)
         
-    env = FrameStack(env, skip)
+    # env = FrameStack(env, skip)
     env.action_space.seed(cfg.get('seed'))
     return env
 

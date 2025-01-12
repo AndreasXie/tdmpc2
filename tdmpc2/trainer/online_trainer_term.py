@@ -27,14 +27,18 @@ class OnlineTrainer(Trainer):
 	def eval(self):
 		"""Evaluate a TD-MPC2 agent."""
 		ep_rewards, ep_successes, ep_kl_div = [], [], []
+		frame_stack = deque(maxlen=self.cfg.frame_stack)
+
 		for i in range(self.cfg.eval_episodes):
 			self.env = make_env(self.cfg)
 			self.cfg.seed = self.cfg.seed + 5
 			done, ep_reward, t = False, 0, 0
 			obs = self.env.reset()
+			[frame_stack.append(obs) for _ in range(self.cfg.frame_stack)]
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
+				obs = torch.cat(list(frame_stack))
 				action, _, kl_div = self.agent.act(obs, t0=t==0, eval_mode=True)
 				obs, reward, done, trunc, info = self.env.step(action)
 				done = info['real_done'] if self.cfg.episode_life else done
@@ -76,6 +80,7 @@ class OnlineTrainer(Trainer):
 	def train(self):
 		"""Train a TD-MPC2 agent."""
 		train_metrics, done, eval_next, real_done = {}, True, False, True
+		frame_stack = deque(maxlen=self.cfg.frame_stack)
 		episode_reward = []
 		enough_train = False
 		prob_entropy = 0
@@ -110,7 +115,8 @@ class OnlineTrainer(Trainer):
 					self._ep_idx = self.buffer.add(torch.cat(self._tds)) if self._step <= 100_000 else self._ep_idx +1
 
 				obs = self.env.reset()
-				self._tds = [self.to_td(obs)]
+				[frame_stack.append(obs) for _ in range(self.cfg.frame_stack)]
+				self._tds = [self.to_td(obs) for _ in range(self.cfg.frame_stack)]
 				episode_reward = []
 
 			# Collect experience
@@ -118,10 +124,12 @@ class OnlineTrainer(Trainer):
 				if self._step < self.cfg.pretrain_steps:
 					action = self.env.rand_act()
 				else:
-					action, prob_entropy, _ = self.agent.act(obs, t0=len(self._tds)==1)
+					state = torch.cat(list(frame_stack))
+					action, prob_entropy, _ = self.agent.act(state, t0=len(self._tds)==1)
 					action = action.squeeze(0)
 
 				obs, reward, done, trunc, info = self.env.step(action)
+				frame_stack.append(obs)
 				self._tds.append(self.to_td(obs, action, reward, done))
 				real_done = info['real_done'] if self.cfg.episode_life else done
 				episode_reward.append(info['raw_reward'] if self.cfg.clip_rewards else reward)

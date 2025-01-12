@@ -135,7 +135,8 @@ class Buffer_atari():
 			truncated_key=None,
 			strict_length=True,
 		)
-		self._batch_size = cfg.batch_size * (self.cfg.horizon + self.cfg.n_step+1)
+		self._sample_size = self.cfg.horizon + self.cfg.frame_stack + self.cfg.n_step
+		self._batch_size = cfg.batch_size * self._sample_size
 		self._num_eps = 0
 
 	@property
@@ -190,11 +191,14 @@ class Buffer_atari():
 		"""
 		td = td.select("obs", "action", "reward", "done", "task", strict=False).to(self._device, non_blocking=True)
 		obs = (td.get('obs')).float().contiguous()
-		action = td.get('action')[1:].contiguous()
-		reward = td.get('reward')[1:].unsqueeze(-1).contiguous()
-		done = td.get('done')[1:].unsqueeze(-1)
+		action = td.get('action')[self.cfg.frame_stack:].contiguous()
+		reward = td.get('reward')[self.cfg.frame_stack:].unsqueeze(-1).contiguous()
+		done = td.get('done')[self.cfg.frame_stack:].unsqueeze(-1)
 		task = td.get('task', None)
 		gamma = self.cfg.get('discount', 0.997)
+
+		#window handling obs based on frame stack
+		obs = obs.unfold(0, self.cfg.frame_stack, 1).squeeze(2).permute(0, 1, 4, 2, 3)
 
 		if task is not None:
 			task = task[0].contiguous()
@@ -225,5 +229,5 @@ class Buffer_atari():
 
 	def sample(self):
 		"""Sample a batch of subsequences from the buffer."""
-		td = self._buffer.sample().view(-1, self.cfg.horizon + self.cfg.n_step+1).permute(1, 0)
+		td = self._buffer.sample().view(-1, self._sample_size).permute(1, 0)
 		return self._prepare_batch_atari(td)

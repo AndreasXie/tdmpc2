@@ -56,7 +56,8 @@ class PixelWrapperAtari(gym.Wrapper):
         if self.transpose:
             obs = obs.permute(0, 3, 1, 2).reshape(12, self.resize, self.resize)
         else:
-            obs = obs.reshape(4, self.resize, self.resize)
+            # obs = obs.reshape(4, self.resize, self.resize)
+            obs = obs.reshape(1, self.resize, self.resize)
 
         return obs
 
