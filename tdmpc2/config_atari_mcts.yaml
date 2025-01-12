@@ -31,7 +31,7 @@ eval_perf: false
 simba: false
 rsnorm: false
 replay_ratio: 1
-reset_interval: 108_000
+reset_interval: 108_000_000
 reset_layers: 2
 reset_percent: 0.2
 n_step: 20
