@@ -135,7 +135,7 @@ class Buffer_atari():
 			truncated_key=None,
 			strict_length=True,
 		)
-		self._batch_size = cfg.batch_size * (cfg.n_step+1)
+		self._batch_size = cfg.batch_size * (self.cfg.horizon + self.cfg.n_step+1)
 		self._num_eps = 0
 
 	@property
@@ -194,10 +194,23 @@ class Buffer_atari():
 		reward = td.get('reward')[1:].unsqueeze(-1).contiguous()
 		done = td.get('done')[1:].unsqueeze(-1)
 		task = td.get('task', None)
+		gamma = self.cfg.get('discount', 0.997)
+
 		if task is not None:
 			task = task[0].contiguous()
-		return obs, action, reward, done, task
-	
+		
+		if self.cfg.n_step_return == True:
+			discounted_reward = torch.zeros_like(reward[:self.cfg.horizon])
+			terminated = torch.zeros_like(done[:self.cfg.horizon], dtype=torch.float32, device=done.device)
+			for i in range(self.cfg.horizon):
+				for k in range(self.cfg.n_step):
+					discounted_reward[i] += gamma**k * reward[i+k] * (1 - terminated[i])
+					terminated[i] = torch.clip_(terminated[i] + done[i+k], max=1.)
+
+			return obs[:self.cfg.horizon+1], action[:self.cfg.horizon], discounted_reward, done[:self.cfg.horizon], terminated, task
+		else:
+			return obs[:self.cfg.horizon+1], action[:self.cfg.horizon], reward[:self.cfg.horizon], done[:self.cfg.horizon], task
+
 	def add(self, td):
 		"""Add an episode to the buffer."""
 		if 'obs' in td and self.cfg.has_done:
@@ -212,5 +225,5 @@ class Buffer_atari():
 
 	def sample(self):
 		"""Sample a batch of subsequences from the buffer."""
-		td = self._buffer.sample().view(-1, self.cfg.n_step+1).permute(1, 0)
+		td = self._buffer.sample().view(-1, self.cfg.horizon + self.cfg.n_step+1).permute(1, 0)
 		return self._prepare_batch_atari(td)

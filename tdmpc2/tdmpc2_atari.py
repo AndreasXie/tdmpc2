@@ -407,7 +407,7 @@ class TDMPC2(torch.nn.Module):
 		return pi_loss.detach(), pi_grad_norm
 	
 	@torch.no_grad()
-	def _td_target_term(self, next_z, reward, done, task):
+	def _td_target_term(self, next_z, reward, done, terminated, task):
 		"""
 		Compute the TD-target from a reward and the observation at the following time step.
 
@@ -445,20 +445,24 @@ class TDMPC2(torch.nn.Module):
 		min_q_next_target = next_act_prob * (qs - self.cfg.entropy_coef * next_log_prob)
 		min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True)
 
-		td_targets = reward + discount * min_q_next_target * (1 - done)
+		if self.cfg.n_step_return == True:
+			# n-step return terminated is if the done flag i in the last n steps
+			td_targets = reward + (discount ** self.cfg.n_step) * min_q_next_target * (1 - terminated)
+		else:
+			td_targets = reward + discount * min_q_next_target * (1 - done)
 		return td_targets
 
-	def _update(self, obs, action, reward, task=None, done = None):
+	def _update(self, obs, action, reward, task=None, done = None, term= None):
 		# Compute targets
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
-			td_targets = self._td_target_term(next_z, reward, done, task)
+			td_targets = self._td_target_term(next_z, reward, done, term, task)
 
 		# Prepare for update
 		self.model.train()
 
 		# Latent rollout
-		zs = torch.empty(self.cfg.n_step+1, self.cfg.batch_size, self.cfg.latent_dim, device=self.device)
+		zs = torch.empty(obs.shape[0], self.cfg.batch_size, self.cfg.latent_dim, device=self.device)
 		z = self.model.encode(obs[0], task)
 
 		zs[0] = z
@@ -472,7 +476,7 @@ class TDMPC2(torch.nn.Module):
 		_zs = zs[:-1]
 		qs = self.model.Q(_zs, action, task, return_type='all')
 		reward_preds = self.model.reward(_zs, action, task)
-		terminated_pred = self.model.terminated(_zs, task)
+		terminated_pred = self.model.terminated(zs[-1], task)
 
 		# Compute losses
 		reward_loss, value_loss = 0, 0
@@ -480,134 +484,11 @@ class TDMPC2(torch.nn.Module):
 			reward_loss = reward_loss + math.soft_ce(rew_pred_unbind, rew_unbind, self.cfg).mean() * self.cfg.rho**t
 			for _, qs_unbind_unbind in enumerate(qs_unbind.unbind(0)):
 				value_loss = value_loss + math.soft_ce(qs_unbind_unbind, td_targets_unbind, self.cfg).mean() * self.cfg.rho**t
-		terminated_loss = F.binary_cross_entropy(terminated_pred, done)
-		consistency_loss = consistency_loss / self.cfg.n_step
-		reward_loss = reward_loss / self.cfg.n_step
-		value_loss = value_loss / (self.cfg.n_step * self.cfg.num_q)
-		total_loss = (
-			self.cfg.consistency_coef * consistency_loss +
-			self.cfg.terminated_coef * terminated_loss +
-			self.cfg.reward_coef * reward_loss +
-			self.cfg.value_coef * value_loss
-		)
 
-		# Update model
-		total_loss.backward()
-		grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.grad_clip_norm)
-		self.optim.step()
-		self.optim.zero_grad(set_to_none=True)
-
-		pi_loss, pi_grad_norm = self.update_pi(zs.detach(), task)
-
-		# Update target Q-functions
-		self.model.soft_update_target_Q()
-
-		# Return training statistics
-		self.model.eval()
-		return TensorDict({
-			"consistency_loss": consistency_loss,
-			"reward_loss": reward_loss,
-			"value_loss": value_loss,
-			"pi_loss": pi_loss,
-			"terminated_loss": terminated_loss,
-			"total_loss": total_loss,
-			"grad_norm": grad_norm,
-			"pi_grad_norm": pi_grad_norm,
-			"pi_scale": self.scale.value,
-		}).detach().mean()
-	
-	@torch.no_grad()
-	def _td_target_term_n_step(self, next_z, rewards, dones, task):
-		"""
-		Compute the TD-target from a reward and the observation at the following time step.
-
-		Args:
-			next_z (torch.Tensor): Latent state at the following time step.
-			reward (torch.Tensor): Reward at the current time step.
-			task (torch.Tensor): Task index (only used for multi-task experiments).
-
-		Returns:
-			torch.Tensor: TD-target.
-		"""
-
-		n_step = rewards.shape[0]
-		gamma = self.discount.unsqueeze(0) if self.cfg.multitask else self.discount
-
-		# 计算折扣累积奖励
-		discounted_rewards = torch.zeros_like(rewards[0])
-		terminated = torch.zeros(dones.shape[1], 1, dtype=torch.float32, device=dones.device)
-		for k in range(n_step):
-			# 只有在之前未终止的情况下，才累加当前步的奖励
-			discounted_rewards += (gamma ** k) * rewards[k] * (1 - terminated)
-			# 更新终止标志
-			terminated = torch.clip_(terminated + dones[k], max=1.)
-
-		# 获取n步后的潜在状态
-		final_next_z = next_z[-1]  # 形状: (batch_size, latent_dim)
-
-		# 计算n步后的Q值
-		_, _, next_act_prob, next_log_prob = self.model.pi(final_next_z, task)
-
-		actions = torch.eye(self.cfg.action_dim, device=next_z.device).unsqueeze(0)
-		if final_next_z.dim() == 2:
-		    # (batch_size, latent_dim) -> (batch_size, action_dim, latent_dim)
-			final_next_z = final_next_z.unsqueeze(1).expand(-1, self.cfg.action_dim, -1)
-			actions = actions.repeat(final_next_z.shape[0], 1, 1)
-		elif final_next_z.dim() == 3:
-		    # (seq_len, batch_size, latent_dim) -> (seq_len, batch_size, action_dim, latent_dim)
-			final_next_z = final_next_z.unsqueeze(2).expand(-1, -1, self.cfg.action_dim, -1)
-			actions = actions.unsqueeze(0).repeat(final_next_z.shape[0], final_next_z.shape[1], 1, 1)
-
-		qs = self.model.Q(final_next_z, actions, task, return_type='min', target=True).squeeze(2)
-
-		min_q_next_target = next_act_prob * (qs - self.cfg.entropy_coef * next_log_prob)
-		min_q_next_target = min_q_next_target.sum(dim=1, keepdim=True)
-
-		# 计算n步TD目标
-		td_targets = discounted_rewards + (gamma ** n_step) * min_q_next_target * (1 - terminated)
-
-		return td_targets
-
-
-	def _update_n_step(self, obs, action, reward, task=None, done = None):
-		# Compute targets
-		with torch.no_grad():
-			next_z = self.model.encode(obs[1:], task)
-			td_targets = self._td_target_term_n_step(next_z, reward, done, task)
-
-		# Prepare for update
-		self.model.train()
-
-		# Latent rollout
-		zs = torch.empty(self.cfg.n_step+1, self.cfg.batch_size, self.cfg.latent_dim, device=self.device)
-		z = self.model.encode(obs[0], task)
-
-		zs[0] = z
-		consistency_loss = 0
-		for t, (_action, _next_z) in enumerate(zip(action.unbind(0), next_z.unbind(0))):
-			z = self.model.next(z, _action, task)
-			consistency_loss = consistency_loss + F.mse_loss(z, _next_z) * self.cfg.rho**t
-			zs[t+1] = z
-
-		# Predictions
-		_zs = zs[:-1]
-		qs = self.model.Q(_zs[0], action[0], task, return_type='all')
-		reward_preds = self.model.reward(_zs, action, task)
-		terminated_pred = self.model.terminated(_zs, task)
-		
-		# Compute losses
-		reward_loss, value_loss = 0, 0
-		for t, (rew_pred_unbind, rew_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0))):
-			reward_loss = reward_loss + math.soft_ce(rew_pred_unbind, rew_unbind, self.cfg).mean() * self.cfg.rho**t
-
-		for i in range(self.cfg.num_q):
-			value_loss = value_loss + math.soft_ce(qs[i], td_targets, self.cfg).mean()
-
-		terminated_loss = F.binary_cross_entropy(terminated_pred, done)
-		consistency_loss = consistency_loss / self.cfg.n_step
-		reward_loss = reward_loss / self.cfg.n_step
-		value_loss = value_loss / self.cfg.num_q
-
+		terminated_loss = F.binary_cross_entropy(terminated_pred, done[-1])
+		consistency_loss = consistency_loss / self.cfg.horizon
+		reward_loss = reward_loss / self.cfg.horizon
+		value_loss = value_loss / (self.cfg.horizon * self.cfg.num_q)
 		total_loss = (
 			self.cfg.consistency_coef * consistency_loss +
 			self.cfg.terminated_coef * terminated_loss +
@@ -651,7 +532,10 @@ class TDMPC2(torch.nn.Module):
 			dict: Dictionary of training statistics.
 		"""
 		done = None
-		obs, action, reward, done, task = buffer.sample()
+		if self.cfg.n_step_return == True:
+			obs, action, reward, done, term, task = buffer.sample()
+		else:
+			obs, action, reward, done, task = buffer.sample()
 
 		kwargs = {}
 		if task is not None:
@@ -659,12 +543,12 @@ class TDMPC2(torch.nn.Module):
 
 		if done is not None:
 			kwargs["done"] = done
-			
+
+		if term is not None:
+			kwargs["term"] = term
+
 		torch.compiler.cudagraph_mark_step_begin()
-		if self.cfg.n_step_return == True:
-			stats = self._update_n_step(obs, action, reward, **kwargs)
-		else:
-			stats = self._update(obs, action, reward, **kwargs)
+		stats = self._update(obs, action, reward, **kwargs)
 
 		return stats
 	
@@ -673,7 +557,7 @@ class TDMPC2(torch.nn.Module):
 		self.model.to(self.device)
 		self.scale.value= torch.nn.Buffer(torch.ones(1, dtype=torch.float32, device=torch.device(self.cfg.get('device', 'cuda:0'))))
 		if self.cfg.optimizer == 'adam':
-			self.optim = torch.optim.AdamW([
+			self.optim = torch.optim.Adam([
 				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
 				{'params': self.model._dynamics.parameters()},
 				{'params': self.model._reward.parameters()},
@@ -682,7 +566,7 @@ class TDMPC2(torch.nn.Module):
 				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
 				 }
 			], lr=self.cfg.lr, capturable=True)
-			self.pi_optim = torch.optim.AdamW(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
+			self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
 
 		elif self.cfg.optimizer == 'sgd':
 			self.optim = torch.optim.SGD([

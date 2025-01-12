@@ -36,11 +36,11 @@ reset_layers: 2
 reset_percent: 0.2
 terminated_coef: 0.1
 n_step: 20
-n_step_return: false
+n_step_return: true
 
 # evaluation
 checkpoint: ???
-eval_episodes: 10
+eval_episodes: 1
 eval_freq: 10000
 
 # training
