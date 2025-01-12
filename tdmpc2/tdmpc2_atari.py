@@ -532,6 +532,7 @@ class TDMPC2(torch.nn.Module):
 			dict: Dictionary of training statistics.
 		"""
 		done = None
+		term = None
 		if self.cfg.n_step_return == True:
 			obs, action, reward, done, term, task = buffer.sample()
 		else:

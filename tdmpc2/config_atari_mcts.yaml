@@ -36,12 +36,12 @@ reset_layers: 2
 reset_percent: 0.2
 terminated_coef: 0.1
 n_step: 20
-n_step_return: true
+n_step_return: false
 
 # evaluation
 checkpoint: ???
 eval_episodes: 10
-eval_freq: 10000
+eval_freq: 5000
 
 # training
 steps: 120_000
@@ -63,7 +63,7 @@ discount_max: 0.995
 buffer_size: 1_000_000
 exp_name: mrs_atari_1024
 data_dir: ???
-device: cuda:1
+device: cuda:0
 
 # planning
 mpc: true
