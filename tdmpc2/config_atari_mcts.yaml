@@ -34,7 +34,6 @@ replay_ratio: 1
 reset_interval: 108_000
 reset_layers: 2
 reset_percent: 0.2
-terminated_coef: 0.1
 n_step: 20
 n_step_return: false
 
@@ -46,9 +45,10 @@ eval_freq: 5000
 # training
 steps: 120_000
 batch_size: 256
-reward_coef: 0.1
+reward_coef: 0.5
 value_coef: 0.1
-consistency_coef: 20
+consistency_coef: 5.
+terminated_coef: 20.
 rho: 0.5
 # lr: 0.2
 # optimizer: sgd
