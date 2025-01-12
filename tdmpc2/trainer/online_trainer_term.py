@@ -83,9 +83,8 @@ class OnlineTrainer(Trainer):
 		frame_stack = deque(maxlen=self.cfg.frame_stack)
 		episode_reward = []
 		enough_train = False
-		prob_entropy = 0
+		prob_entropys = []
 		while self._step <= self.cfg.steps:
-			prob_entropy = 0
 			# Evaluate agent periodically
 			if self._step % self.cfg.eval_freq == 0:
 				eval_next = True
@@ -108,11 +107,12 @@ class OnlineTrainer(Trainer):
 					train_metrics.update(
 						episode_reward=torch.tensor(episode_reward).sum(),
 						episode_success=info['success'],
-						prob_entropy=prob_entropy
+						prob_entropy=torch.tensor(prob_entropys).mean()
 					)
 					train_metrics.update(self.common_metrics())
 					self.logger.log(train_metrics, 'train')
 					self._ep_idx = self.buffer.add(torch.cat(self._tds)) if self._step <= 100_000 else self._ep_idx +1
+					prob_entropys = []
 
 				obs = self.env.reset()
 				[frame_stack.append(obs) for _ in range(self.cfg.frame_stack)]
@@ -127,6 +127,7 @@ class OnlineTrainer(Trainer):
 					state = torch.cat(list(frame_stack))
 					action, prob_entropy, _ = self.agent.act(state, t0=len(self._tds)==1)
 					action = action.squeeze(0)
+					prob_entropys.append(prob_entropy)
 
 				obs, reward, done, trunc, info = self.env.step(action)
 				frame_stack.append(obs)

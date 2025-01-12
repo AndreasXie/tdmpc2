@@ -20,7 +20,7 @@ class TDMPC2(torch.nn.Module):
 		self.device = torch.device(cfg.get('device', 'cuda:0'))
 		self.model = WorldModel(cfg).to(self.device)
 		if cfg.optimizer == 'adam':
-			self.optim = torch.optim.AdamW([
+			self.optim = torch.optim.Adam([
 				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
 				{'params': self.model._dynamics.parameters()},
 				{'params': self.model._termination.parameters()},
@@ -28,8 +28,8 @@ class TDMPC2(torch.nn.Module):
 				{'params': self.model._Qs.parameters()},
 				{'params': self.model._task_emb.parameters() if self.cfg.multitask else []
 				 }
-			], lr=self.cfg.lr,weight_decay=0.01 ,capturable=True)
-			self.pi_optim = torch.optim.AdamW(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
+			], lr=self.cfg.lr,capturable=True)
+			self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
 
 		elif cfg.optimizer == 'sgd':
 			self.optim = torch.optim.SGD([
@@ -165,7 +165,7 @@ class TDMPC2(torch.nn.Module):
 		return G + discount * (1-terminated) * self.model.Q(z, pi, task, return_type='avg')
 
 	@torch.no_grad()
-	def _multistep_randomshooting_gt(self, z, t0=False, eval_mode=False, task=None):
+	def _multistep_randomshooting_gt(self, z):
 		import itertools
 		"""
 		Plan a sequence of actions using multi-step MPPI for a discrete action space.
@@ -263,7 +263,7 @@ class TDMPC2(torch.nn.Module):
 			prob_action= (1 - explora_frac) * prob_action+ explora_frac * dirichlet_noise
 
 		if eval_mode and self.cfg.eval_perf:
-			gt_prob = self._multistep_randomshooting_gt(z, t0=t0, eval_mode=eval_mode, task=task)
+			gt_prob = self._multistep_randomshooting_gt(z)
 			norm_prob = norm_prob = torch.softmax(prob_action - prob_action.max(dim=1,keepdim=True).values + 1e-6, dim=-1)
 			norm_gt_prob = torch.softmax(gt_prob - gt_prob.max(dim=1,keepdim=True).values + 1e-6, dim=-1)
 			kl_div = torch.nn.functional.kl_div(norm_prob.log(), norm_gt_prob, reduction='sum')
@@ -476,16 +476,18 @@ class TDMPC2(torch.nn.Module):
 		_zs = zs[:-1]
 		qs = self.model.Q(_zs, action, task, return_type='all')
 		reward_preds = self.model.reward(_zs, action, task)
-		terminated_pred = self.model.terminated(zs[-1], task)
+		terminated_pred = self.model.terminated(zs[1:], task)
 
 		# Compute losses
-		reward_loss, value_loss = 0, 0
+		reward_loss, value_loss,terminated_loss = 0, 0, 0
 		for t, (rew_pred_unbind, rew_unbind, td_targets_unbind, qs_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0), td_targets.unbind(0), qs.unbind(1))):
 			reward_loss = reward_loss + math.soft_ce(rew_pred_unbind, rew_unbind, self.cfg).mean() * self.cfg.rho**t
 			for _, qs_unbind_unbind in enumerate(qs_unbind.unbind(0)):
 				value_loss = value_loss + math.soft_ce(qs_unbind_unbind, td_targets_unbind, self.cfg).mean() * self.cfg.rho**t
-
-		terminated_loss = F.binary_cross_entropy(terminated_pred, done[-1])
+		for i in range(terminated_pred.shape[0]):
+			terminated_loss = terminated_loss + F.binary_cross_entropy(terminated_pred[i], done[i]) * self.cfg.rho**i
+		
+		terminated_loss = terminated_loss / self.cfg.horizon
 		consistency_loss = consistency_loss / self.cfg.horizon
 		reward_loss = reward_loss / self.cfg.horizon
 		value_loss = value_loss / (self.cfg.horizon * self.cfg.num_q)
