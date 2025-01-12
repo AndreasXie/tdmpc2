@@ -123,8 +123,8 @@ class TDMPC2(torch.nn.Module):
 		"""
 		obs = obs.to(self.device, non_blocking=True).unsqueeze(0)
 
-		prob_entropy = 0
-		kl_div = 0
+		prob_entropy = 0.
+		kl_div = torch.Tensor([0.])
 		if task is not None:
 			task = torch.tensor([task], device=self.device)
 		if self.cfg.mpc:
