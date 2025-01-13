@@ -99,3 +99,6 @@ class TensorWrapperAtari(gym.Wrapper):
 
 	def render(self, mode='rgb_array'):
 		return self.env.render(mode)
+	
+	def save_video(self):
+		self.env.save_video()

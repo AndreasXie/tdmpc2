@@ -84,8 +84,7 @@ class ImagePreprocessor(nn.Module):
             torch.Tensor: 预处理后的张量，形状与输入相同。
         """
         # 输入归一化
-        x = x.to(self.dtype) / 255.0 - 0.5
-
+        x = x.to(self.dtype) / 255.0
         if self.data_augmentation:
             # 填充图像
             x_padded = F.pad(x, (self.img_pad, self.img_pad, self.img_pad, self.img_pad), mode='replicate')  # (B, C, H+2P, W+2P)
@@ -108,7 +107,7 @@ class ImagePreprocessor(nn.Module):
             cropped = cropped * noise
 
             x = cropped
-
+        # print(torch.max(x), torch.min(x))
         return x
 
 class PixelPreprocess(nn.Module):

@@ -12,10 +12,11 @@ from termcolor import colored
 
 from common.parser import parse_cfg
 from common.seed import set_seed
-from common.buffer import Buffer_atari
+from common.buffer import Buffer_atari, Buffer_atari_faster
 from envs import make_env
 from tdmpc2_atari import TDMPC2
 from trainer.online_trainer_term import OnlineTrainer as OnlineTrainerTerm
+from trainer.online_trainer_term_faster import OnlineTrainer as OnlineTrainerTerm_faster
 from common.logger import Logger
 import dataclasses
 from typing import Any
@@ -85,12 +86,14 @@ def train(cfg: dict):
 	cfg = cfg_to_dataclass(cfg)
 
 	cfg.exp_name = cfg.exp_name
+	if cfg.faster_buffer:
+		trainer_cls = OnlineTrainerTerm_faster
 
 	trainer = trainer_cls(
 		cfg=cfg,
 		env=make_env(cfg),
 		agent=TDMPC2(cfg),
-		buffer=Buffer_atari(cfg),
+		buffer=Buffer_atari(cfg) if not cfg.faster_buffer else Buffer_atari_faster(cfg),
 		logger=Logger(cfg),
 	)
 	trainer.train()

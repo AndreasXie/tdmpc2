@@ -46,17 +46,24 @@ class PixelWrapperAtari(gym.Wrapper):
         obs_to_string: bool. Convert the observation to jpeg string if True, in order to save memory usage.
         """
         super().__init__(env)
-        self.clip_reward = cfg.get('clip_reward')
+        self.clip_reward = cfg.get('clip_rewards')
         self.action_range = env.action_space.n
         self.transpose = not cfg.gray_scale#if no gray sacle, dim 4,84,84,3 need to be transpose
         self.resize = cfg.get('resize')
         self.gray_scale = cfg.get('gray_scale')
+        self.faster_buffer = cfg.get('faster_buffer')
 
     def format_obs(self, obs):
         if self.transpose:
-            obs = obs.permute(0, 3, 1, 2).reshape(12, self.resize, self.resize)
+            if self.faster_buffer:
+                obs = obs.permute(2, 0, 1)
+            else:
+                obs = obs.permute(0, 3, 1, 2).reshape(12, self.resize, self.resize)
         else:
-            obs = obs.reshape(4, self.resize, self.resize)
+            if self.faster_buffer:
+                 obs = obs.reshape(1, self.resize, self.resize)
+            else:
+                obs = obs.reshape(4, self.resize, self.resize)
 
         return obs
 
@@ -87,3 +94,6 @@ class PixelWrapperAtari(gym.Wrapper):
     
     def render(self, mode='rgb_array'):
         return self.env.render(mode)
+    
+    def save_video(self):
+        return self.env.save_video()

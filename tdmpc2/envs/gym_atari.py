@@ -1,8 +1,13 @@
 import gym
+import os
 import numpy as np
 import cv2
 from collections import deque
-
+import shutil
+import time
+from glob import glob
+from datetime import datetime
+from gym import Wrapper
 class TimeLimit(gym.Wrapper):
     def __init__(self, env, max_episode_steps=None):
         super(TimeLimit, self).__init__(env)
@@ -240,6 +245,100 @@ class FrameStack(gym.ObservationWrapper):
         observation = self.env.reset(**kwargs)
         [self.frames.append(observation) for _ in range(self.num_stack)]
         return self.observation()
+    
+    def save_video(self):
+        self.env.save_video()
+
+class VideoMonitor_atari(Wrapper):
+
+    def __init__(self, env, directory="./video", video_length=None, fps=30, video_format='avi'):
+        super(VideoMonitor_atari, self).__init__(env)
+        self.directory = directory
+        os.makedirs(directory, exist_ok=True)
+        self.video_length = video_length
+        self.fps = fps
+        self.video_format = video_format
+        self.frames = []
+        self.episode_count = 0
+
+    def reset(self, **kwargs):
+        observation = self.env.reset(**kwargs)
+        self.frames = []
+        return observation
+
+    def step(self, action):
+        observation, reward, done, trunc, info = self.env.step(action)
+        
+        frame = self._get_frame(observation)
+        self.frames.append(frame)
+
+        if self.video_length is not None and len(self.frames) >= self.video_length:
+            done = True
+            trunc = True
+            info['truncated'] = trunc
+
+        return observation, reward, done, trunc, info
+
+    def _get_frame(self, observation):
+        """
+        将观察转换为适合视频保存的帧格式。
+
+        Args:
+            observation (np.ndarray): 环境返回的观察。
+
+        Returns:
+            np.ndarray: 转换后的帧，格式为 BGR。
+        """
+        # 假设 observation 是 RGB 格式的图像
+        if len(observation.shape) == 2 or observation.shape[2] == 1:
+            # 灰度图转换为 BGR
+            frame = cv2.cvtColor(observation, cv2.COLOR_GRAY2BGR)
+        else:
+            # RGB 转换为 BGR
+            frame = cv2.cvtColor(observation, cv2.COLOR_RGB2BGR)
+        return frame
+
+    def save_video(self):
+        """
+        将收集到的帧保存为视频文件。
+        """
+        if not self.frames:
+            print("no frames to save")
+            return
+
+        # 生成视频文件名
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        video_filename = os.path.join(self.directory, f"episode_{self.episode_count}_{timestamp}.{self.video_format}")
+
+        # 获取视频帧的尺寸
+        height, width, layers = self.frames[0].shape
+
+        # 定义视频编码器
+        if self.video_format == 'avi':
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        elif self.video_format == 'mp4':
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        else:
+            raise ValueError(f"Unsupported video format: {self.video_format}")
+
+        # 创建 VideoWriter 对象
+        video = cv2.VideoWriter(video_filename, fourcc, self.fps, (width, height))
+
+        # 将帧写入视频
+        for frame in self.frames:
+            video.write(frame)
+        video.release()
+
+        print(f"save video in : {video_filename}")
+        self.episode_count += 1
+
+    def close(self):
+        """
+        关闭包装器，并保存任何未保存的视频帧。
+        """
+        if self.frames:
+            self._save_video()
+        super(VideoMonitor_atari, self).close()
 
 def make_atari(cfg):
     """Make Atari games
@@ -282,24 +381,41 @@ def make_atari(cfg):
     env = EpisodicLifeEnv(env) if episodic_life else env
     env = WarpFrame(env, width=resize, height=resize, grayscale=gray_scale) 
     env = TimeLimit(env, max_episode_steps=max_episode_steps)
-        
-    env = FrameStack(env, skip)
+    if cfg.get("video"):
+        env = VideoMonitor_atari(env, directory="./video")
+    
+    if not cfg.faster_buffer:
+        env = FrameStack(env, cfg.frame_stack)
     env.action_space.seed(cfg.get('seed'))
     return env
 
     
-def test_make_atari():
+def test_make_atari_with_video():
+    """
+    测试 make_atari 函数及 Monitor_atari 的视频保存功能。
+    """
     # 配置参数
     cfg = {
-        'task': 'Pong',               # 选择一个 Atari 游戏，如 Pong
-        'gray_scale': True,           # 是否使用灰度图像
+        'task': 'Asterix',               # 选择一个 Atari 游戏，如 Pong
+        'gray_scale': False,          # 是否使用灰度图像
         'n_skip': 4,                  # 帧跳跃次数
-        'resize': 96,                 # 图像缩放尺寸
-        'max_episode_steps': 3000,    # 每个 episode 的最大步数
+        'resize': 84,                 # 图像缩放尺寸
+        'max_episode_steps': 30000,     # 每个 episode 的最大步数（缩短测试时间）
         'episode_life': True,         # 是否使用生命值作为 episode 的结束条件
         'noop': 30,                   # 重置时的无动作步数
-        'seed': 42                    # 随机种子
+        'seed': 42,                   # 随机种子
+        'video': True                 # 启用视频录制
     }
+
+    # 指定视频保存目录
+    video_dir = "./test_video"
+
+    # 确保视频目录不存在，以避免干扰测试结果
+    if os.path.exists(video_dir):
+        shutil.rmtree(video_dir)
+
+    # 更新配置中的视频保存路径
+    cfg['video_directory'] = video_dir
 
     try:
         # 创建 Atari 环境
@@ -314,10 +430,11 @@ def test_make_atari():
     print(f"初始观察值的形状: {obs.shape}")
 
     done = False
+    trunc = False
     total_reward = 0
     step_count = 0
 
-    while not done:
+    while not done and not trunc:
         # 随机选择一个动作
         action = env.action_space.sample()
         
@@ -336,9 +453,25 @@ def test_make_atari():
         # env.render()
 
     print(f"一个 episode 结束！总步数: {step_count}, 总奖励: {total_reward}")
-    
-    # 关闭环境
+
+    # 关闭环境，确保所有视频都被保存
     env.close()
 
+    # 等待一小段时间，确保视频文件被完全写入磁盘
+    time.sleep(1)
+
+    # 验证视频目录中是否生成了视频文件
+    video_files = glob(os.path.join(video_dir, f"episode_*.{cfg.get('video_format', 'avi')}"))
+    
+    if video_files:
+        print(f"视频文件已成功保存到目录: {video_dir}")
+        print(f"生成的视频文件: {video_files}")
+    else:
+        print(f"未在目录 {video_dir} 中找到视频文件。测试失败。")
+
+    # （可选）清理生成的视频文件，保持测试环境整洁
+    # shutil.rmtree(video_dir)
+    # print(f"已删除视频目录: {video_dir}")
+
 if __name__ == "__main__":
-    test_make_atari()
+    test_make_atari_with_video()
