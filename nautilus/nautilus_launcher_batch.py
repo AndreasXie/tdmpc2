@@ -88,7 +88,7 @@ def _submit(args, name, seeds=None):
 	# 	print(tmp_path)
 	# 	print(termcolor.colored(f'Warning: seed is not supported', 'red'))
 	# 	return 
-	os.system(f'kubectl create -f {tmp_path}')
+	os.system(f'./kubectl create -f {tmp_path}')
 	print(termcolor.colored(f'Job submitted', 'green'))
 
 

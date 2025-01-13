@@ -14,7 +14,7 @@ import yaml
 
 
 def _get_current_context():
-	cmd = ["kubectl", "config", "current-context"]
+	cmd = ["./kubectl", "config", "current-context"]
 	output = subprocess.check_output(cmd)
 	return output.decode().strip()
 
@@ -64,7 +64,7 @@ def _submit(args, name):
 		f.write(template)
 	tmp.flush()
 	tmp.close()
-	os.system(f'kubectl create -f {tmp_path}')
+	os.system(f'./kubectl create -f {tmp_path}')
 	print(termcolor.colored(f'{cfg["name"]}', 'yellow'), args if len(args) > 0 else 'None') # print job name and args
 
 
